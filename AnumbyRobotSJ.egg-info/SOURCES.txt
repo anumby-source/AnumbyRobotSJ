@@ -1,0 +1,11 @@
+LICENSE
+MANIFEST.in
+README.md
+setup.py
+AnumbyRobotSJ.egg-info/PKG-INFO
+AnumbyRobotSJ.egg-info/SOURCES.txt
+AnumbyRobotSJ.egg-info/dependency_links.txt
+AnumbyRobotSJ.egg-info/entry_points.txt
+AnumbyRobotSJ.egg-info/top_level.txt
+MasterMind/__init__.py
+MasterMind/__main__.py

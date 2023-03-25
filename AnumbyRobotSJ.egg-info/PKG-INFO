@@ -1,0 +1,27 @@
+Metadata-Version: 2.1
+Name: AnumbyRobotSJ
+Version: 1.0.0
+Summary: Software du Robot Anumby pour le Service Jeunesse de Bures sur Yvette 
+Home-page: https://github.com/anumby-source/RobotServiceJeunesse2023/tree/main/MasterMind
+Author: Chris Arnault
+Author-email: chris.arnault@gmail.com
+License: MIT License
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.9
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# MasterMind
+
+## Installation
+
+``pip install AnumbyRobotSJ=1.0.0``
+
+# Comment utiliser ?
+
+# License
+
+Copyright 2023 Chris Arnault
+
+This repository is licensed under the MIT license.
+See LICENSE for details
