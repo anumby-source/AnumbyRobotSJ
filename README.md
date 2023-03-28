@@ -1,6 +1,6 @@
 # MasterMind
 
-Ce package Python est disponible en public. Il s'installe avec l'outil `pip` (il faut avoir Python installé). Une fois installé (https://github.com/anumby-source/AnumbyRobotSJ#installation)
+Ce package Python est disponible en public. Il s'installe avec l'outil `pip` (il faut avoir Python installé). Une fois [installé](#installation),
 vous disposez de plusieurs applications:
 
 - [AnumbyFormes](#anumbyformes)
