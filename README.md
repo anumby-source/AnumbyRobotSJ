@@ -24,12 +24,20 @@
 
 ## Installation
 
+``pip install AnumbyRobotSJ``
+
+ou
+
 ``pip install AnumbyRobotSJ==<version>``
+
+## Déinstallation
+
+``pip uninstall -y AnumbyRobotSJ``
 
 # Reconstruction du package.
 
-- incrémenter le numéro de version => modifier VERSION
-- lancer `build.bat`
+- 1) incrémenter le numéro de version => modifier VERSION
+- 2) lancer `build.bat`
 
 # License
 
