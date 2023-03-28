@@ -6,10 +6,11 @@
 - produit des données d'apprentissage pour le réseau de neurones artificiel (Kéras)
 - entraîne le RdN sur ces données
 
-`AnumbyFormes -h`
-`AnumbyFormes -figures [-f <numéro>] [-cell <int=40>] [-formes <int=8>]` construit les figures de base
-`AnumbyFormes -run [-build_data] [-data <int=100>]` reconstruit les données d'entraînement et lance l'apprentissage
-`AnumbyFormes -run [-build_model]` reconstruit le modèle et lance l'apprentissage sur des données existantes
+
+- `AnumbyFormes -h`
+- `AnumbyFormes -figures [-f <numéro>] [-cell <int=40>] [-formes <int=8>]` construit les figures de base
+- `AnumbyFormes -run [-build_data] [-data <int=100>]` reconstruit les données d'entraînement et lance l'apprentissage
+- `AnumbyFormes -run [-build_model]` reconstruit le modèle et lance l'apprentissage sur des données existantes
 
 ## AnumbyVehicule
 
@@ -17,9 +18,9 @@
 
 `AnumbyVehicule`
 
-![Ecran](build/lib/AnumbyFormes/dataset/Rond/Ecran.png)
+![Ecran](Ecran.GIF)
 
-![Contrôle](build/lib/AnumbyFormes/dataset/Rond/Contrôle.png)
+![Contrôle](Contrôle.GIF)
 
 ## Installation
 
