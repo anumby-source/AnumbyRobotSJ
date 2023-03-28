@@ -1,5 +1,15 @@
 # MasterMind
 
+Ce package Python est disponible en public. Il s'installe avec l'outil `pip` (il faut avoir Python installé). Une fois installé (https://github.com/anumby-source/AnumbyRobotSJ#installation)
+vous disposez de plusieurs applications:
+
+- [AnumbyFormes](#anumbyformes)
+- [AnumbyVehicule](#anumbyvehicule)
+
+et bientôt...
+
+- AnumbyMasterMind
+
 ## AnumbyFormes
 
 - construit les figures pour le jeu MasterMind
