@@ -1,2 +1,0 @@
-[console_scripts]
-MasterMind = MasterMind:__main__.main
