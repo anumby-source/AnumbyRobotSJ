@@ -1,4 +1,14 @@
 .idea
-Lib
+AnumbyFormes/data
+AnumbyFormes/run
+AnumbyRobotSJ.egg-info
+build
+dist
 include
+Lib
 Scripts
+tar
+twine
+
+
+

@@ -1,0 +1,4 @@
+Pillow==9.1.0
+opencv-python
+tensorflow
+keras
