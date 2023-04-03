@@ -22,8 +22,10 @@ DEFAULT_NOTEBOOK_NAME = "Unknown"
 
 # ---- Styles ------------------------------------------------------
 #
-FIDLE_MPLSTYLE = '../fidle/mplstyles/custom.mplstyle'
-FIDLE_CSSFILE  = '../fidle/css/custom.css'
+# FIDLE_MPLSTYLE = '../fidle/mplstyles/custom.mplstyle'
+FIDLE_MPLSTYLE = 'custom.mplstyle'
+# FIDLE_CSSFILE  = '../fidle/css/custom.css'
+FIDLE_CSSFILE  = 'custom.css'
 
 # ---- Save figs or not (yes|no)
 #      Overided by env : FIDLE_SAVE_FIGS

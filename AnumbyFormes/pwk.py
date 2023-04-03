@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display, Image, Markdown, HTML
 
 import config
-import pwk
+# import pwk
 
 __version__ = config.VERSION
 
@@ -56,7 +56,7 @@ _chrono_stop = None
 # init_all
 # -------------------------------------------------------------
 #
-def init(name=None, run_directory='./run'):
+def init(name=None, run_directory='./run', data_directory='./data'):
     global notebook_id
     global datasets_dir
     global run_dir
@@ -369,7 +369,7 @@ def rmin(l):
 #
 def plot_images(x, y=None, indices='all', columns=12, x_size=1, y_size=1,
                 colorbar=False, y_pred=None, cm='binary', norm=None, y_padding=0.35, spines_alpha=1,
-                fontsize=20, interpolation='lanczos', save_as='auto'):
+                fontsize=8, interpolation='lanczos', save_as=None):
     """
     Show some images in a grid, with legends
     args:
@@ -431,11 +431,15 @@ def plot_images(x, y=None, indices='all', columns=12, x_size=1, y_size=1,
                 axs.set_xlabel(y[i], fontsize=fontsize)
         if colorbar:
             fig.colorbar(img, orientation="vertical", shrink=0.65)
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_images==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
-def plot_image(x, cm='binary', figsize=(4, 4), interpolation='lanczos', save_as='auto'):
+def plot_image(x, cm='binary', figsize=(4, 4), interpolation='lanczos', save_as=None):
     """
     Draw a single image.
     Image shape can be (lx,ly), (lx,ly,1) or (lx,ly,n)
@@ -457,8 +461,12 @@ def plot_image(x, cm='binary', figsize=(4, 4), interpolation='lanczos', save_as=
     # ---- Draw it
     plt.figure(figsize=figsize)
     plt.imshow(xx, cmap=cm, interpolation=interpolation)
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_image==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
 # -------------------------------------------------------------
@@ -467,7 +475,7 @@ def plot_image(x, cm='binary', figsize=(4, 4), interpolation='lanczos', save_as=
 #
 def plot_history(history, figsize=(8, 6),
                  plot={"Accuracy": ['accuracy', 'val_accuracy'], 'Loss': ['loss', 'val_loss']},
-                 save_as='auto'):
+                 save_where=""):
     """
     Show history
     args:
@@ -484,13 +492,9 @@ def plot_history(history, figsize=(8, 6),
         for c in curves:
             plt.plot(history.history[c])
         plt.legend(curves, loc='upper left')
-        if save_as == 'auto':
-            figname = 'auto'
-        else:
-            figname = f'{save_as}_{fig_id}'
-            fig_id += 1
-        save_fig(figname)
-        plt.show()
+
+        print("=========plot_history==========")
+        save_fig(save_where + title + '.jpg')
 
 
 def plot_confusion_matrix(y_true, y_pred,
@@ -500,7 +504,7 @@ def plot_confusion_matrix(y_true, y_pred,
                           normalize=True,
                           figsize=(10, 8),
                           digit_format='{:0.2f}',
-                          save_as='auto'):
+                          save_as=None):
     """
     given a sklearn confusion matrix (cm), make a nice plot
 
@@ -563,8 +567,12 @@ def plot_confusion_matrix(y_true, y_pred,
     plt.tight_layout()
     plt.ylabel('True label')
     plt.xlabel('Predicted label\naccuracy={:0.4f}; misclass={:0.4f}'.format(accuracy, misclass))
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_confusion_matrix==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
 def display_confusion_matrix(y_true, y_pred, labels=None, color='green',
@@ -600,7 +608,7 @@ def display_confusion_matrix(y_true, y_pred, labels=None, color='green',
             .set_properties(**{'font-size': font_size}))
 
 
-def plot_donut(values, labels, colors=["lightsteelblue", "coral"], figsize=(6, 6), title=None, save_as='auto'):
+def plot_donut(values, labels, colors=["lightsteelblue", "coral"], figsize=(6, 6), title=None, save_as=None):
     """
     Draw a donut
     args:
@@ -627,13 +635,17 @@ def plot_donut(values, labels, colors=["lightsteelblue", "coral"], figsize=(6, 6
     # Equal aspect ratio ensures that pie is drawn as a circle
     plt.axis('equal')
     plt.tight_layout()
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_donut==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
 def plot_multivariate_serie(sequence, labels=None, predictions=None, only_features=None,
                             columns=3, width=5, height=4, wspace=0.3, hspace=0.2, ms=6, lw=1,
-                            save_as='auto', time_dt=1, hide_ticks=False):
+                            save_as=None, time_dt=1, hide_ticks=False):
     sequence_len = len(sequence)
     features_len = sequence.shape[1]
     if only_features is None: only_features = range(features_len)
@@ -674,8 +686,12 @@ def plot_multivariate_serie(sequence, labels=None, predictions=None, only_featur
 
         ax.legend(loc="upper left")
         n += 1
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_multivariate==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
 # -------------------------------------------------------------
@@ -683,7 +699,7 @@ def plot_multivariate_serie(sequence, labels=None, predictions=None, only_featur
 # -------------------------------------------------------------
 #
 
-def plot_2d_serie(data, figsize=(10, 8), monocolor=False, hide_ticks=True, lw=2, ms=4, save_as='auto'):
+def plot_2d_serie(data, figsize=(10, 8), monocolor=False, hide_ticks=True, lw=2, ms=4, save_as=None):
     """
     Plot a 2d dataset as a trajectory
     args:
@@ -725,11 +741,15 @@ def plot_2d_serie(data, figsize=(10, 8), monocolor=False, hide_ticks=True, lw=2,
         ax.set_yticks([])
         ax.set_xticks([])
 
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_2d_serie==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
-def plot_2d_segment(sequence_real, sequence_pred, figsize=(10, 8), ms=6, lw=1, hide_ticks=True, save_as='auto'):
+def plot_2d_segment(sequence_real, sequence_pred, figsize=(10, 8), ms=6, lw=1, hide_ticks=True, save_as=None):
     """
     Plot a 2d segment real and predicted
     args:
@@ -771,8 +791,12 @@ def plot_2d_segment(sequence_real, sequence_pred, figsize=(10, 8), ms=6, lw=1, h
         ax.set_yticks([])
         ax.set_xticks([])
 
-    save_fig(save_as)
-    plt.show()
+
+    if save_as is None:
+        print("=========plot_2d_segment==========")
+        plt.show()
+    else:
+        save_fig(save_as)
 
 
 def set_save_fig(save=True, figs_dir='./run/figs', figs_name='fig_', figs_id=0):
@@ -794,26 +818,8 @@ def set_save_fig(save=True, figs_dir='./run/figs', figs_name='fig_', figs_id=0):
     print(f'Path figs            : {_figs_dir}')
 
 
-def save_fig(filename='auto', png=True, svg=False):
-    """
-    Save current figure
-    args:
-        filename : Image filename ('auto')
-        png      : Boolean. Save as png if True (True)
-        svg      : Boolean. Save as svg if True (False)
-    """
-    global _save_figs, _figs_dir, _figs_name, _figs_id
-    if filename is None: return
-    if not _save_figs: return
-    mkdir(_figs_dir)
-    if filename == 'auto':
-        path = f'{_figs_dir}/{notebook_id}-{_figs_name}{_figs_id:02d}'
-    else:
-        path = f'{_figs_dir}/{notebook_id}-{filename}'
-    if png: plt.savefig(f'{path}.png')
-    if svg: plt.savefig(f'{path}.png')
-    if filename == 'auto': _figs_id += 1
-    display_html(f'<div class="comment">Saved: {path}</div>')
+def save_fig(filename=None):
+    plt.savefig(filename)
 
 
 def subtitle(t):

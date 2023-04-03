@@ -1,10 +1,5 @@
-import sys
 import argparse
 
-import tkinter as tk
-from tkinter import *
-from PIL import ImageGrab
-from PIL import Image
 import cv2 as cv
 from random import *
 import numpy as np
@@ -16,9 +11,24 @@ import tensorflow as tf
 from tensorflow import keras
 import pandas as pd
 import pwk
+import datetime
+import matplotlib.pyplot as plt
 
 HERE = os.path.normpath(os.path.dirname(__file__)).replace("\\", "/")
 DATA = HERE
+LOG = DATA + "/log/"
+
+print("DATA=", DATA)
+
+R = (0, 0, 255)
+G = (0, 255, 0)
+B = (255, 0, 0)
+M = (255, 0, 255)
+C = (255, 255, 0)
+Y = (0, 255, 255)
+Black = (0, 0, 0)
+White = (255, 255, 255)
+
 
 """
 Insertion d'une entrée dans un DataFrame pandas
@@ -42,8 +52,7 @@ def deg2rad(alpha):
 
 class Figures(object):
     def __init__(self):
-        self.top = tk.Tk()
-        self.top.overrideredirect(1)  # FRAMELESS CANVAS WINDOW
+        self.image = None
 
         self.draw_forms = [self.drawRond, self.drawSquare, self.drawTriangle, self.drawStar5,
                            self.drawStar4, self.drawEclair, self.drawCoeur, self.drawLune,
@@ -51,45 +60,54 @@ class Figures(object):
         self.forms = ["Rond", "Square", "Triangle", "Star5",
                       "Star4", "Eclair", "Coeur", "Lune",
                       "Hexagone", "Pentagone", "Logo", "D"]
-        self.line_width = 2
+        self.line_width = 1
 
-    def run(self):
-        self.top.mainloop()
+    def set_zoom(self, cell, space, margin, line):
+        # Au centre, nous avons "cell" qui contient la forme elle-même
+        #
+        #  [ margin | space | cell | space | margin ]
+        #
+        self.cell = cell
 
-    def set_zoom(self, c):
-        self.cell = c
-        self.cell2 = self.cell / 2
-        self.cell4 = self.cell2 / 2
-        self.margin = 10
+        self.space = space
+        self.margin = margin
+        self.line_width = line
+
+        self.cell2 = int(self.cell / 2)
+        self.cell4 = int(self.cell2 / 2)
+
+        self.figure_size = self.margin + self.space + self.cell + self.space + self.margin
+
+        print("set_zoom> margin=", self.margin, "space=", self.space, "cell=", self.cell, "size=", self.figure_size, "line_width=", self.line_width)
 
 
-    def set_canvas(self, form_number):
-        self.canvas = tk.Canvas(self.top, bg="white",
-                                height=3 * (self.cell + self.margin) + self.margin,
-                                width=form_number * (self.cell + 2*self.margin) + self.margin)
-        self.canvas.pack()
+    def set_image(self, form_number):
+        w = form_number * self.figure_size
+        h = self.figure_size
+        image1 = np.ones((h, w, 3)) * 255
 
-
-    def drawGrille(self):
-        for row in range(11):
-            self.canvas.create_line(self.margin, row*self.cell/10 + self.margin,
-                                    self.margin + self.cell, row*self.cell/10 + self.margin,
-                                    fill="red")
-            for col in range(11):
-                self.canvas.create_line(col*self.cell/10 + self.margin, self.margin,
-                                        col*self.cell/10 + self.margin, self.margin + self.cell,
-                                        fill="red")
-
+        self.image = np.ones((h, w, 3)) * 255
 
     def drawFrame(self, x, y):
-        offset = 3
-        corner1 = (x + offset, y + offset)
-        corner2 = (x + self.cell - 1 - offset + 2*self.margin, y + self.cell - 1 - offset + 2*self.margin)
+
+        """
+        # Total
+        corner1 = (x, y)
+        corner2 = (x + self.figure_size - 1 , y + self.figure_size - 1 )
         self.canvas.create_rectangle(corner1,
                                      corner2,
-                                     outline="black",
+                                     fill="white",
                                      width = self.line_width + 1)
-        return x + self.margin, y + self.margin
+        """
+
+        A = self.margin
+        corner1 = (x + A, y + A)
+        corner2 = (x + self.figure_size - A - 1 , y + self.figure_size - A - 1 )
+        cv.rectangle(self.image, corner1, corner2, Black, self.line_width)
+
+        B = self.margin + self.space
+
+        return x + B, y + B
 
 
     def drawPolygone(self, pointes, x, y):
@@ -100,14 +118,15 @@ class Figures(object):
             alpha = dalpha * 2*np.pi/pointes
             r = radius
 
-            px = x + self.cell2 + r * np.cos(alpha - np.pi/2)
-            py = y + self.cell2 + r * np.sin(alpha - np.pi/2)
+            px = int(x + self.cell2 + r * np.cos(alpha - np.pi/2))
+            py = int(y + self.cell2 + r * np.sin(alpha - np.pi/2))
 
             # console.log("small=", small, "alpha=", alpha, "px = ", px, "py = ", py)
 
             pts.append((px, py))
 
-        self.canvas.create_polygon(pts, fill="white", outline="black", width=self.line_width)
+        for i in range(pointes + 1):
+            cv.line(self.image, pts[i], pts[(i + 1) % (pointes + 1)], Black, self.line_width)
 
 
     def drawStar(self, pointes, x, y):
@@ -117,7 +136,9 @@ class Figures(object):
 
         pts = []
         small = False
-        for dalpha in range(2*pointes + 1):
+
+        n = 2*pointes
+        for dalpha in range(n + 1):
             alpha = dalpha * np.pi/pointes
             r = 0
 
@@ -128,20 +149,22 @@ class Figures(object):
                 r = self.cell2
                 small = True
 
-            px = x + self.cell2 + r * np.cos(alpha - np.pi/2)
-            py = y + self.cell2 + r * np.sin(alpha - np.pi/2)
+            px = int(x + self.cell2 + r * np.cos(alpha - np.pi/2))
+            py = int(y + self.cell2 + r * np.sin(alpha - np.pi/2))
 
             # console.log("small=", small, "alpha=", alpha, "px = ", px, "py = ", py)
 
             pts.append((px, py))
 
-        self.canvas.create_polygon(pts, fill="white", outline="black", width=self.line_width)
+        for i in range(n + 1):
+            cv.line(self.image, pts[i], pts[(i + 1) % (n + 1)], Black, self.line_width)
 
 
     def drawRond(self, x, y):
         # print("rond")
         x, y = self.drawFrame(x, y)
-        self.canvas.create_oval(x, y, x + self.cell, y + self.cell, fill="white", outline="black", width=self.line_width)
+
+        cv.circle(self.image, (int(x) + self.cell2, int(y) + self.cell2), self.cell2, Black, self.line_width)
 
 
     def drawSquare(self, x, y):
@@ -187,23 +210,26 @@ class Figures(object):
         dalpha = np.pi/10
         dr = self.cell * 0.18
 
-        for nalpha in range(pointes):
+        n = pointes
+        for nalpha in range(n):
             alpha = nalpha * 2*np.pi/pointes + np.pi/4
             r = radius
 
-            px = cx + r * np.cos(alpha - dalpha)
-            py = cy + r * np.sin(alpha - dalpha)
+            px = int(cx + r * np.cos(alpha - dalpha))
+            py = int(cy + r * np.sin(alpha - dalpha))
             pts.append((px, py))
 
-            px = cx + (r - dr) * np.cos(alpha)
-            py = cy + (r - dr) * np.sin(alpha)
+            px = int(cx + (r - dr) * np.cos(alpha))
+            py = int(cy + (r - dr) * np.sin(alpha))
             pts.append((px, py))
 
-            px = cx + r * np.cos(alpha + dalpha)
-            py = cy + r * np.sin(alpha + dalpha)
+            px = int(cx + r * np.cos(alpha + dalpha))
+            py = int(cy + r * np.sin(alpha + dalpha))
             pts.append((px, py))
 
-        self.canvas.create_polygon(pts, fill="white", outline="black", width=self.line_width)
+        for i in range(n):
+            cv.line(self.image, pts[i], pts[(i + 1) % n], Black, self.line_width)
+
 
 
     def drawCoeur(self, x, y):
@@ -216,34 +242,30 @@ class Figures(object):
         c1x = x + self.cell4
         c1y = y + self.cell4
 
-        start1 = 0
-        extent1 = np.pi * 1.23
-        p12x = c1x + radius * np.cos(start1 + extent1)
-        p12y = c1y - radius * np.sin(start1 + extent1)
+        alpha1 = np.pi * 0.77
+        start1 = rad2deg(alpha1)
+        end1 = rad2deg(np.pi * 2)
+        p12x = int(c1x + radius * np.cos(alpha1))
+        p12y = int(c1y + radius * np.sin(alpha1))
 
-        self.canvas.create_arc(c1x - self.cell4, c1y - self.cell4,
-                          c1x + self.cell4, c1y + self.cell4,
-                          start=rad2deg(start1),
-                          extent=rad2deg(extent1), style=ARC, width=self.line_width)
+        cv.ellipse(self.image, (c1x, c1y), (self.cell4, self.cell4), 0, start1, end1, Black, self.line_width)
 
         c2x = x + self.cell2 + self.cell4
         c2y = c1y
 
-        start2 = np.pi - (start1 + extent1)
-        extent2 = extent1
+        alpha2 = np.pi * 2.23
+        start2 = rad2deg(np.pi)
+        end2 = rad2deg(alpha2)
 
         # print(start1, start2, extent1)
 
-        p21x = c2x + radius * np.cos(start2)
-        p21y = c2y - radius * np.sin(start2)
+        p21x = int(c2x + radius * np.cos(alpha2))
+        p21y = int(c2y + radius * np.sin(alpha2))
 
-        self.canvas.create_arc(c2x - self.cell4, c2y - self.cell4,
-                               c2x + self.cell4, c2y + self.cell4,
-                               start=rad2deg(start2),
-                               extent=rad2deg(extent2), style=ARC, width=self.line_width)
+        cv.ellipse(self.image, (c2x, c2y), (self.cell4, self.cell4), 0, start2, end2, Black, self.line_width)
 
-        self.canvas.create_line(p12x, p12y, x + self.cell2, y + self.cell, fill="black", width=self.line_width)
-        self.canvas.create_line(x + self.cell2, y + self.cell, p21x, p21y, fill="black", width=self.line_width)
+        cv.line(self.image, (p12x, p12y), (x + self.cell2, y + self.cell), Black, self.line_width)
+        cv.line(self.image, (x + self.cell2, y + self.cell), (p21x, p21y), Black, self.line_width)
 
 
     def drawEclair(self, x, y):
@@ -255,21 +277,24 @@ class Figures(object):
         #self.canvas.create_line(x, y + self.cell*0.55, x + self.cell, y, fill="green")
 
         pts = []
-        pts.append((x, y + self.cell*0.2))                 # 1
-        pts.append((x + self.cell*0.305, y + self.cell*0.38))   # 2
-        pts.append((x + self.cell*0.22, y + self.cell*0.43))    # 3
-        pts.append((x + self.cell*0.53, y + self.cell*0.63))    # 4
-        pts.append((x + self.cell*0.44, y + self.cell*0.69))    # 5
+        pts.append((int(x), int(y + self.cell*0.2)))                 # 1
+        pts.append((int(x + self.cell*0.305), int(y + self.cell*0.38)))   # 2
+        pts.append((int(x + self.cell*0.22), int(y + self.cell*0.43)))    # 3
+        pts.append((int(x + self.cell*0.53), int(y + self.cell*0.63)))    # 4
+        pts.append((int(x + self.cell*0.44), int(y + self.cell*0.69)))    # 5
 
-        pts.append((x + self.cell, y + self.cell))              # 6
+        pts.append((int(x + self.cell), int(y + self.cell)))              # 6
 
-        pts.append((x + self.cell*0.595, y + self.cell*0.60))    # 7
-        pts.append((x + self.cell*0.67, y + self.cell*0.55))   # 8
-        pts.append((x + self.cell*0.43, y + self.cell*0.31))     # 9
-        pts.append((x + self.cell*0.515, y + self.cell*0.265))    # 10
-        pts.append((x + self.cell*0.35, y + self.cell*0.01))     # 11
-        pts.append((x, y + self.cell*0.2))                  # 1
-        self.canvas.create_polygon(pts, fill="white", outline="black", width=self.line_width)
+        pts.append((int(x + self.cell*0.595), int(y + self.cell*0.60)))    # 7
+        pts.append((int(x + self.cell*0.67), int(y + self.cell*0.55)))   # 8
+        pts.append((int(x + self.cell*0.43), int(y + self.cell*0.31)))     # 9
+        pts.append((int(x + self.cell*0.515), int(y + self.cell*0.265)))    # 10
+        pts.append((int(x + self.cell*0.35), int(y + self.cell*0.01)))     # 11
+        pts.append((int(x), int(y + self.cell*0.2)))                  # 1
+
+        n = len(pts)
+        for i in range(n):
+            cv.line(self.image, pts[i], pts[(i + 1) % n], Black, self.line_width)
 
 
     def drawLune(self, x, y):
@@ -324,30 +349,29 @@ class Figures(object):
             return x, y1, y2
 
 
-        radius1 = self.cell2
-        c1x = x + radius1
-        c1y = y + radius1
+        radius1 = int(self.cell2)
+        c1x = int(x + radius1)
+        c1y = int(y + radius1)
 
-        radius2 = self.cell2 * 0.8
-        c2x = c1x + self.cell2*0.6
-        c2y = c1y
+        radius2 = int(self.cell2 * 0.8)
+        c2x = int(c1x + self.cell2*0.6)
+        c2y = int(c1y)
 
         x, y1, y2 = intersection(c1x, c1y, radius1, c2x, radius2)
 
-        alpha = np.arccos((x - c1x) / radius1)
-        espace1 = rad2deg(alpha)
+        # coord1 = c1x - radius1, c1y - radius1, c1x + radius1, c1y + radius1
+        alpha1 = np.arccos((x - c1x) / radius1)
+        start1 = rad2deg(alpha1)
+        end1 = rad2deg(2*np.pi - alpha1)
 
-        coord1 = c1x - radius1, c1y - radius1, c1x + radius1, c1y + radius1
-        self.canvas.create_arc(coord1, outline="black",
-                               start=espace1, extent=(360. - 2 * espace1), style=ARC,
-                               width=self.line_width)
+        cv.ellipse(self.image, (c1x, c1y), (radius1, radius1), 0, start1, end1, Black, self.line_width)
 
-        coord2 = c2x - radius2, c2y - radius2, c2x + radius2, c2y + radius2
-        alpha = np.arccos((x - c2x) / radius2)
-        espace2 = rad2deg(alpha)
-        self.canvas.create_arc(coord2, outline="black",
-                               start=espace2, extent=(360. - 2 * espace2), style=ARC,
-                               width=self.line_width)
+        # coord2 = c2x - radius2, c2y - radius2, c2x + radius2, c2y + radius2
+        alpha2 = np.arccos((x - c2x) / radius2)
+        start2 = rad2deg(alpha2)
+        end2 = rad2deg(2*np.pi - alpha2)
+
+        cv.ellipse(self.image, (c2x, c2y), (radius2, radius2), 0, start2, end2, Black, self.line_width)
 
 
     def drawD(self, x, y):
@@ -355,36 +379,32 @@ class Figures(object):
 
         x, y = self.drawFrame(x, y)
 
-        self.canvas.create_line(x + self.cell2, y, x, y, fill="black", width=self.line_width)
-        self.canvas.create_line(x, y, x, y + self.cell, fill="black", width=self.line_width)
-        self.canvas.create_line(x, y + self.cell, x + self.cell2, y + self.cell, fill="black", width=self.line_width)
+        cv.line(self.image, (int(x + self.cell2), int(y)), (int(x), int(y)), Black, self.line_width)
+        cv.line(self.image, (int(x), int(y)), (int(x), int(y + self.cell)), Black, self.line_width)
+        cv.line(self.image, (int(x), int(y + self.cell)), (int(x + self.cell2), int(y + self.cell)), Black, self.line_width)
+
         coord = x, y, x + self.cell, y + self.cell
-        self.canvas.create_arc(coord, outline="black", start=-90, extent=180, style=ARC, width=self.line_width)
+
+        cv.ellipse(self.image, (x + self.cell2, y + self.cell2), (self.cell2, self.cell2), 0, 3*90, 5*90, Black, self.line_width)
+
 
 
     def drawAll(self, y, form_number=None):
         for x, drawer in enumerate(self.draw_forms):
             if form_number is not None and x >= form_number: break
             # print(self.forms[x], x * self.cell + self.margin, y)
-            drawer(self.margin + x * (self.cell + 2*self.margin), y)
+            drawer(x * (self.figure_size), y)
 
 
-    def prepare_source_images(self, zoom, form_number=None, rebuild_forme=None):
+    def prepare_source_images(self, form_number=None, rebuild_forme=None):
         if form_number is None: form_number = len(self.forms)
 
-        self.set_zoom(zoom)
-        self.set_canvas(form_number)
-
-        self.canvas.delete("all")
-
-        # self.drawGrille()
-
-        y = self.margin
-        self.drawAll(y, form_number)
+        # y = 5
+        # self.prepareAll(y, form_number)
 
         images = []
 
-        y = self.margin
+        y = 1
         for form, drawer in enumerate(self.draw_forms):
             if form >= form_number: break
             if rebuild_forme is not None and rebuild_forme != form:
@@ -392,42 +412,24 @@ class Figures(object):
 
             print("prepare_source_images> form=", form)
 
-            self.top.update()
-            X = self.margin + form * (self.cell + 2*self.margin)
-            Y = y
-            img = ImageGrab.grab((X - 1,
-                                  Y - 1,
-                                  X + self.cell + 2 + 2*self.margin,
-                                  Y + self.cell + 2 + 2*self.margin))
+            self.set_image(1)
 
-            pix = np.array(img.getdata())
+            drawer(1, y)
 
-            cvimg = pix.reshape((img.size[0], img.size[1], 3)).astype(np.float32)
 
-            """
-            black = np.zeros((img.size[0], img.size[1]), np.float32)
-            print(cvimg.shape, black.shape)
+            os.makedirs(DATA + "./dataset/{}".format(self.forms[form]), mode=0o750, exist_ok=True)
+            filename = DATA + "./dataset/{}/RawImages{}.jpg".format(self.forms[form], self.forms[form])
 
-            for c in range(2):
-                black += cvimg[:,:,0]
-            black /= 3.0
-            # black = black.astype(np.int8)
-
-            bbb = (black < 255.0)*1*black
-            """
-
-            # print(cvimg[0:3, 0:3, :])
-            os.makedirs("./dataset/{}".format(self.forms[form]), mode=0o750, exist_ok=True)
-            filename = "./dataset/{}/RawImages{}.jpg".format(self.forms[form], self.forms[form])
-            cv.waitKey()
-            cv.imshow(filename, cvimg)
-            cv.waitKey()
-            cv.imwrite(filename, cvimg)
+            # cv.imshow(filename, self.image)
+            # cv.waitKey(0)
+            status = cv.imwrite(filename, self.image)
             # cv.imwrite("BlackImages{}.jpg".format(self.forms[form]), black)
 
-            data = np.zeros([img.size[0], img.size[1]])
+            shape = self.image.shape
+            print("image shape = ", shape)
+            data = np.zeros([shape[0], shape[1]])
             for i in range(3):
-                data[:, :] += cvimg[:, :, i]
+                data[:, :] += self.image[:, :, i]
 
             data /= 3.0
 
@@ -435,7 +437,7 @@ class Figures(object):
 
         return images
 
-    def load_source_images(self, zoom, form_number=None, rebuild_forme=None):
+    def load_source_images(self, form_number=None, rebuild_forme=None):
         if form_number is None: form_number = len(self.forms)
 
         images = []
@@ -449,11 +451,10 @@ class Figures(object):
             print("load_source_images> nform=", nform)
 
             filename = DATA + "/dataset/{}/RawImages{}.jpg".format(self.forms[nform], self.forms[nform])
-            img = Image.open(filename)
-            npimg = np.array(img)
-            data = np.zeros([img.size[0], img.size[1]])
+            img = cv.imread(filename, cv.IMREAD_COLOR)
+            data = np.zeros([img.shape[0], img.shape[1]])
             for i in range(3):
-                data[:, :] += npimg[:, :, i]
+                data[:, :] += img[:, :, i]
 
             data /= 3.0
 
@@ -584,11 +585,14 @@ def transformation_model(height, width):
     Width(factor)
     Contrast(factor)
     """
-    scale = 0.5
+    # scale = 1.5
+
+    # general range of transformation
+    transformation_range = 0.08
     return tf.keras.Sequential([
-        keras.layers.RandomZoom((0.0, 0.7), fill_mode="nearest"),
-        keras.layers.RandomRotation(0.5),
-        keras.layers.RandomTranslation(0.5, 0.5, fill_mode="nearest"),
+        keras.layers.RandomZoom((0.0, transformation_range), fill_mode="nearest"),
+        keras.layers.RandomRotation(transformation_range),
+        keras.layers.RandomTranslation(transformation_range, transformation_range, fill_mode="nearest"),
         # keras.layers.RandomCrop(int(height*scale), int(width*scale)),
         # keras.layers.RandomContrast(0.5),
     ])
@@ -623,18 +627,23 @@ def transformation(image):
 def build_data(data_size, images):
     # on sauvegarde les data non normlisées
 
+    """
     def f(x):
         sigma = 5
         x = gauss(mu=float(x), sigma=sigma)
         if x < 0: x = 0.
         if x > 255: x = 255.
         return x
+    """
 
-    vf = np.vectorize(f)
+    # vf = np.vectorize(f)
 
-    # print("build_data> ", images)
     shape = images[0].shape
+
+    print("build_data> ", shape)
     image_number = len(images)
+
+    # sélectionne la proportion de données dans le training set et le test set
     frac = 0.85
     first = True
     data_id = 0
@@ -644,16 +653,18 @@ def build_data(data_size, images):
             if data_id % 1000 == 0: print("generate data> data_id = ", data_id)
             # print(raw_img.shape)
 
-            # Change rotation
+            # random transformations
             data = transformation(raw_img)
 
-            """
             # visualisation de l'image finale
-            print("forme", image_id, "data_id=", data_id)
-            cv.imshow("input image", raw_img)
-            cv.imshow("output image", data)
-            cv.waitKey(0)
-            """
+            show = False
+            if show:
+                print("forme", image_id, "data_id=", data_id)
+                cv.imshow("input image", raw_img)
+                cv.imshow("output image", data)
+                k = cv.waitKey(0)
+                if k == 27 or k == 113:
+                    exit()
 
             if first:
                 shape = data.shape
@@ -745,13 +756,13 @@ def build_model_v1(shape, form_number):
 
     model.add(keras.layers.Input((shape[1], shape[2], 1)))
 
-    model.add(keras.layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(48, (3, 3), activation='relu'))
     model.add(keras.layers.MaxPooling2D((2, 2)))
-    model.add(keras.layers.Dropout(0.2))
+    # model.add(keras.layers.Dropout(0.2))
 
-    model.add(keras.layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(48, (3, 3), activation='relu'))
     model.add(keras.layers.MaxPooling2D((2, 2)))
-    model.add(keras.layers.Dropout(0.2))
+    # model.add(keras.layers.Dropout(0.2))
 
     model.add(keras.layers.Flatten())
     model.add(keras.layers.Dense(128, activation='relu'))
@@ -788,18 +799,13 @@ def build_model_v2(shape):
     return model
 
 
-def do_run(figures, form_number, zoom, data_size, version, rebuild_forms, rebuild_data, rebuild_model, rebuild_forme=None):
-    figures.set_zoom(zoom)
-
+def do_run(figures, form_number, data_size, rebuild_data, rebuild_model, rebuild_forme=None):
     os.makedirs("./data", mode=0o750, exist_ok=True)
 
     if rebuild_data:
         rebuild_model = True
 
-        if rebuild_forms:
-            images = figures.prepare_source_images(zoom=zoom, form_number= form_number, rebuild_forme=rebuild_forme)
-        else:
-            images = figures.load_source_images(zoom=zoom, form_number=form_number, rebuild_forme=rebuild_forme)
+        images = figures.load_source_images(form_number=form_number, rebuild_forme=rebuild_forme)
 
         # print("run> ", type(images), images)
 
@@ -814,8 +820,17 @@ def do_run(figures, form_number, zoom, data_size, version, rebuild_forms, rebuil
     print("run> y_test : ", y_test.shape)
     print("run> x_train : ", y_train[10:20, ])
 
+    """
+    def plot_images(x, y=None, indices='all', columns=12, x_size=1, y_size=1,
+                    colorbar=False, y_pred=None, cm='binary', norm=None, y_padding=0.35, spines_alpha=1,
+                    fontsize=20, interpolation='lanczos', save_as='auto'):
+    """
+
+    pwk.plot_images(x=x_train, y=y_train, indices=range(10*12), fontsize=8, save_as=LOG + "Data.jpg")
+
     print('Before normalization : Min={}, max={}'.format(x_train.min(), x_train.max()))
 
+    xmin = x_train.min()
     xmax = x_train.max()
 
     x_train = x_train / xmax
@@ -826,13 +841,13 @@ def do_run(figures, form_number, zoom, data_size, version, rebuild_forms, rebuil
     os.makedirs(DATA + "/run/models", mode=0o750, exist_ok=True)
     save_dir = DATA + "/run/models/best_model.h5"
 
+    with open(DATA + "/run/minmax.txt", "w+") as f:
+        f.write("min={} max={}".format(xmin, xmax))
+
     if rebuild_model:
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Build model")
 
-        if version == "v1":
-            model = build_model_v1(x_train.shape, form_number)
-        else:
-            model = build_model_v2(x_train.shape)
+        model = build_model_v1(x_train.shape, form_number)
 
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Start training")
         batch_size  = 512
@@ -848,7 +863,7 @@ def do_run(figures, form_number, zoom, data_size, version, rebuild_forms, rebuil
                             validation_data = (x_test, y_test),
                             callbacks = [savemodel_callback])
 
-        pwk.plot_history(history, figsize=(form_number, 4), save_as='03-history')
+        pwk.plot_history(history, figsize=(form_number, 4), save_where=LOG)
 
     else:
         model = keras.models.load_model(save_dir)
@@ -856,15 +871,8 @@ def do_run(figures, form_number, zoom, data_size, version, rebuild_forms, rebuil
     print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Evaluate model")
     score = model.evaluate(x_test, y_test, verbose=0)
 
-    if version == "v1":
-        print(f'Test loss     : {score[0]:4.4f}')
-        print(f'Test accuracy : {score[1]:4.4f}')
-    else:
-        print("x_test / loss  : {:5.4f}".format(score[0]))
-        print("x_test / mae   : {:5.4f}".format(score[1]))
-        print("x_test / mse   : {:5.4f}".format(score[2]))
-
-        print("min(val_mae)   : {:.4f}".format(min(history.history["val_mae"])))
+    print(f'Test loss     : {score[0]:4.4f}')
+    print(f'Test accuracy : {score[1]:4.4f}')
 
     return model, x_train, y_train, x_test, y_test
 
@@ -872,9 +880,14 @@ def do_run(figures, form_number, zoom, data_size, version, rebuild_forms, rebuil
 def handle_arguments():
     argParser = argparse.ArgumentParser()
 
-    argParser.add_argument("-formes", type=int, default=8, help="number of formes for training")
-    argParser.add_argument("-cell", "--cell_size", type=int, default=40, help="cell size for figures")
-    argParser.add_argument("-data", "--data_size", type=int, default=100, help="data size for traning")
+    argParser.add_argument("-formes", type=int, default=8, help="nombre de formes pour l'entrainement")
+
+    argParser.add_argument("-cell", type=int, default=100, help="taille de la figure elle_même")
+    argParser.add_argument("-space", type=int, default=30, help="espace autour de la figure")
+    argParser.add_argument("-margin", type=int, default=40, help="marge entre figures")
+    argParser.add_argument("-line", type=int, default=2, help="line width")
+
+    argParser.add_argument("-data", "--data_size", type=int, default=100, help="nombre de données for traning")
 
     group1 = argParser.add_mutually_exclusive_group()
     group1.add_argument("-figures", action="store_true", help="build figures")
@@ -882,14 +895,14 @@ def handle_arguments():
 
     argParser.add_argument("-f", "--figure", type=int, default=None, help="figure to build")
 
-
     # par défaut: c'est l'action "load" qui est vraie
     argParser.add_argument("-build_data", action="store_true", help="build data")
     argParser.add_argument("-build_model", action="store_true", help="build model")
 
     args = argParser.parse_args()
 
-    return args.cell_size, args.data_size, args.formes, args.figures, args.figure, \
+    return args.cell, args.space, args.margin, args.line,\
+           args.data_size, args.formes, args.figures, args.figure, \
            args.build_data, args.build_model, \
            args.run
 
@@ -898,76 +911,121 @@ def handle_arguments():
 
 
 def main():
-    zoom, data_size, form_number, build_figures, figure, build_data, build_model, run = handle_arguments()
+    cell, space, margin, line, data_size, form_number, build_figures, figure, build_data, build_model, run = handle_arguments()
 
     figures = Figures()
 
     # ============ generlal parameters=================
-    os.makedirs("./dataset", mode=0o750, exist_ok=True)
-    os.makedirs("./data", mode=0o750, exist_ok=True)
+    os.makedirs(DATA + "./dataset", mode=0o750, exist_ok=True)
+    os.makedirs(DATA + "./data", mode=0o750, exist_ok=True)
 
     if build_figures:
+        figures.set_zoom(cell, space, margin, line)
         if figure is None:
             print("Formes> Rebuild all figures")
-            figures.prepare_source_images(zoom=zoom, form_number=form_number)
+            figures.prepare_source_images(form_number=form_number)
         else:
             print("Formes> Rebuild figure # {}".format(figure))
-            figures.prepare_source_images(zoom=zoom, form_number=form_number, rebuild_forme=figure)
+            figures.prepare_source_images(form_number=form_number, rebuild_forme=figure)
+
+        with open(DATA + "/dataset/figure.conf", "w+") as f:
+            f.write("cell={} spaceline={} margin={} line={}".format(cell, space, margin, line))
+
         return
     elif run:
+
+        with open(DATA + "/dataset/figure.conf", "r") as f:
+            line = f.readline()
+            m = re.match("cell=(\d+) spaceline=(\d) margin=(\d) line=(\d)", line)
+            # print(line, m[1], m[2], m[3], m[4])
+            try:
+                cell = int(m[1])
+                space = int(m[2])
+                margin = int(m[3])
+                line = int(m[4])
+                figures.set_zoom(cell, space, margin, line)
+            except:
+                print("pas de configuration pour les figures")
+                exit()
+
         print("Formes> Run with build_data={} build_model={}".format(build_data, build_model))
     else:
         print("Formes> no action")
         return
 
-    version = "v1"
-    # version = "v2"
-
     model, x_train, y_train, x_test, y_test = do_run(figures,
                                                      form_number=form_number,
-                                                     zoom=zoom,
                                                      data_size=data_size,
-                                                     version=version,
-                                                     rebuild_forms=False,
                                                      rebuild_data=build_data,
                                                      rebuild_model=build_model)
 
-    # pwk.plot_images(x_train, y_train, [27], x_size=5, y_size=5, colorbar=True, save_as='01-one-digit')
-    # pwk.plot_images(x_train, y_train, range(0,64), columns=8, save_as='02-many-digits')
+    # pwk.plot_images(x_train, y_train, [27], x_size=5, y_size=5, colorbar=True, save_as=LOG + '01-one-digit')
+    # pwk.plot_images(x_train, y_train, range(0,64), columns=8, save_as=LOG + '02-many-digits')
+
+    print("len(x_test)=", len(x_test))
+    tests = len(x_test)
 
     print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Predictions")
 
-    """
-    test_number = 1
-    for i in range(10):
-        n = randint(0, 6000)
-        A = x_test[n:n+1, :, :, :]
-        B = y_test[n:n+1]
-
-        now = datetime.datetime.now()
-        # y_sigmoid = model.predict(A, verbose=0)
-        result = model(A)
+    test_global = False
+    if test_global:
+        result = model(x_test)
         y_pred = np.argmax(result, axis=-1)
-        t = datetime.datetime.now() - now
-        errors = [i for i in range(len(A)) if y_pred[i] != B[i]]
+        pwk.plot_images(x_test, y_test, range(10 * 8), columns=8, x_size=1, y_size=1, y_pred=y_pred,
+                        save_as=LOG + 'Predictions.jpg')
+        errors = [i for i in range(len(x_test)) if y_pred[i] != y_test[i]]
         # print("errors", errors)
-        print("n=", n, "A", A.shape, B, "pred=", y_pred[0], "durée=", t)
+        # errors=errors[:min(24,len(errors))]
+        # pwk.plot_images(x_test, y_test, errors[:15], columns=8, x_size=2, y_size=2, y_pred=y_pred, save_as=LOG + 'Errors')
 
-    return
-    """
+        pwk.plot_confusion_matrix(y_test, y_pred, range(8), normalize=True, save_as=LOG + 'Confusion.jpg')
+    else:
+        test_number = 1
+        errors = 0
+        ok = 0
+        scores1 = []
+        scores2 = []
+        scores3 = []
+        scores4 = []
+        for i in range(tests):
+            # n = randint(0, tests)
+            # print("n=", n)
+            A = x_test[i:i+1, :, :, :]
+            B = int(y_test[i:i+1][0])
 
-    print("len(x_test)=", len(x_test))
-    result = model(x_test)
-    y_pred = np.argmax(result, axis=-1)
-    pwk.plot_images(x_test, y_test, range(0, 200), columns=8, x_size=1, y_size=1, y_pred=y_pred,
-                    save_as='04-predictions')
-    errors = [i for i in range(len(x_test)) if y_pred[i] != y_test[i]]
-    # print("errors", errors)
-    # errors=errors[:min(24,len(errors))]
-    # pwk.plot_images(x_test, y_test, errors[:15], columns=8, x_size=2, y_size=2, y_pred=y_pred, save_as='05-some-errors')
+            now = datetime.datetime.now()
+            result = model(A)
+            t = datetime.datetime.now() - now
+            r = np.zeros(8)
+            for k in range(8):
+                r[k] = result[0, k]
 
-    pwk.plot_confusion_matrix(y_test, y_pred, range(8), normalize=True, save_as='06-confusion-matrix')
-    # pwk.end()
+            predmax = np.argmax(r)
+
+            if predmax != B:
+                # le max ne correspond pas à la théorie
+                # print("i=", i, "A", A.shape, B, "pred=", predmax, "durée=", t, "score=", r)
+                scores1.append(r[B])         # résultat pour la théorie
+                scores2.append(r[predmax])   # résultat max
+            else:
+                scores3.append(r[predmax])   # résultat conforme à la théorie
+
+            if r[predmax] > 0.99 and predmax != B:
+                scores4.append(r[predmax])   # résultat non conforme à la théorie
+
+
+
+        plt.figure(figsize=[4, 4])
+        plt.title("non conforme")
+        plt.scatter(scores1, scores2)
+        plt.figure(figsize=[4, 4])
+        plt.title("conforme")
+        plt.plot(range(len(scores3)), scores3)
+        if len(scores4) > 0:
+            plt.figure(figsize=[4, 4])
+            plt.title("non conforme seuil")
+            plt.plot(range(len(scores4)), scores4)
+        plt.show()
 
     return
 

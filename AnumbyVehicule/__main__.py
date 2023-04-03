@@ -174,8 +174,8 @@ class Help(object):
 # on va y installer les figures tournées alatoirement
 class Table(object):
     def __init__(self):
-        self.width = 800
-        self.height = 600
+        self.width = 3072
+        self.height = 3000
         self.image = None
         self.hidden = None
         # Lors des essais on doit réinitialiser l'image et la liste des zones où on installe les figures
@@ -410,8 +410,8 @@ def crop(to_img, n, pos, img):
 # Simulation de la Camera: on recopie une partie de l'image de la table située à la position courante du robot
 class Camera(object):
     def __init__(self):
-        self.width = 120
-        self.height = 120
+        self.width = 400
+        self.height = 400
         self.margin = 60
         self.w2 = int(self.width/2)
         self.h2 = int(self.height/2)
@@ -482,7 +482,7 @@ class Camera(object):
             # sans grandissement on obtient une surface de l'ordre de 2500
             # il faudra construire un étalonnage en fonction du grandissement image réelle
             if area < 2000: continue
-            if area > 3000: continue
+            # if area > 3000: continue
 
             # color = COLOR_X
             color = R

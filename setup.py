@@ -23,8 +23,7 @@ setup(
     packages = ["AnumbyMasterMind", "AnumbyFormes", "AnumbyVehicule"],
     include_package_data = True,
 
-    package_data = {"AnumbyFormes": ["data/*.npy",
-                                     "dataset/*/*.jpg",
+    package_data = {"AnumbyFormes": ["dataset/*/*.jpg",
                                      "run/models/*.h5"],
                     "AnumbyVehicule": ["*.jpg"]
                     },
@@ -37,7 +36,8 @@ setup(
         "keras >= 2.11.0",
         "scikit-learn >= 1.2.2",
         "pandas >= 1.5.3",
-        "matplotlib >= 3.7.1"
+        "matplotlib >= 3.7.1",
+        "ipython >= 8.11.0"
     ],
 
     entry_points = {
