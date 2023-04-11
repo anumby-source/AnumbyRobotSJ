@@ -50,6 +50,28 @@ def deg2rad(alpha):
     return np.pi * alpha / 180
 
 
+# get aspect ratio from a contour
+def AspectRatio(cnt):
+    try:
+        x, y, w, h = cv.boundingRect(cnt)
+        aspect_ratio = float(w) / h
+    except:
+        aspect_ratio = 0
+    return aspect_ratio
+
+
+# get area from a contour
+def Area(cnt):
+    try:
+        area = cv.contourArea(cnt)
+    except:
+        area = 0
+        rect_area = 0
+    return area
+
+
+
+
 class Figures(object):
     def __init__(self):
         self.image = None
@@ -590,12 +612,55 @@ def transformation_model(height, width):
     # general range of transformation
     transformation_range = 0.08
     return tf.keras.Sequential([
-        keras.layers.RandomZoom((0.0, transformation_range), fill_mode="nearest"),
+        keras.layers.RandomZoom(-0.2, fill_mode="nearest"),
         keras.layers.RandomRotation(transformation_range),
         keras.layers.RandomTranslation(transformation_range, transformation_range, fill_mode="nearest"),
         # keras.layers.RandomCrop(int(height*scale), int(width*scale)),
         # keras.layers.RandomContrast(0.5),
     ])
+
+def add_noise(image):
+    height, width = image.shape[:2]
+
+    """
+    n taches de bruit [0, 10]
+    pour chaque tache, on ajoute m pixels de bruit [0..30]
+    la largeur de la tache vaut sigma [0 .. 20]
+    """
+    n_max = 20
+    sigma_max = 30
+    m_max = 100
+
+    n = int(randrange(0, n_max))
+    for i in range(n):
+        xs = []
+        ys = []
+        x0 = int(randrange(0, width))
+        y0 = int(randrange(0, height))
+        sigma = int(randrange(0, sigma_max))
+        m = int(randrange(0, m_max))
+        for j in range(m):
+            x = int(gauss(mu=float(x0), sigma=sigma))
+            y = int(gauss(mu=float(y0), sigma=sigma))
+
+            # b = int(randrange(0, 255))
+            # g = int(randrange(0, 255))
+            # r = int(randrange(0, 255))
+
+            if x >= 0 and x < width and y >= 0 and y < height:
+                # print("noise", "tache=", i, "pixel=", j, "wh=", width, height, "xy=", x, y, "bgr=", r, g, r)
+                image[y, x, 0] = 0
+                image[y, x, 1] = 0
+                image[y, x, 2] = 0
+
+    """
+    cv.imshow("noised image", image)
+    k = cv.waitKey(0)
+    if k == 27 or k == 113:
+        exit()
+    """
+
+    return image
 
 
 def transformation(image):
@@ -607,10 +672,17 @@ def transformation(image):
 
     transformed_image = transformation_model(height, width)
 
+    """
+    On voudrait ajouter quelques pixels parasites sur les images produites
+    """
+
     data = np.zeros([height, width, 3], np.float32)
     data[:, :, 0] = image[:, :]
     data[:, :, 1] = image[:, :]
     data[:, :, 2] = image[:, :]
+
+    X = np.zeros([height, width, 3], np.float32)
+    data = add_noise(data)
 
     img = transformed_image(data).numpy()
     # print(img.shape, type(img))
@@ -713,6 +785,8 @@ def build_data(data_size, images):
     np.save(DATA + "/data/y_train.npy", y_train, allow_pickle=True)
     np.save(DATA + "/data/x_test.npy", x_test, allow_pickle=True)
     np.save(DATA + "/data/y_test.npy", y_test, allow_pickle=True)
+
+    np.save(DATA + "/dataset/pattern.npy", x_train[0:1], allow_pickle=True)
 
     return x_train, y_train, x_test, y_test
 
@@ -876,18 +950,48 @@ def do_run(figures, form_number, data_size, rebuild_data, rebuild_model, rebuild
 
     return model, x_train, y_train, x_test, y_test
 
+def find_figures(src):
+    src_gray = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
+    shape = src.shape
+    max_area = (shape[0] - 1) * (shape[1] - 1)
+    # print(shape, max_area)
+    # src_gray = cv.blur(src_gray, (3, 3))
+    ret, thresh = cv.threshold(src_gray, 200, 255, cv.THRESH_BINARY)
+    contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    for i, cnt in enumerate(contours):
+        x, y, w, h = cv.boundingRect(cnt)
+
+        # on attend un contour carré pour les figures
+        ratio = AspectRatio(cnt)
+        if ratio > 1.02: continue
+        if ratio < 0.98: continue
+
+        area = int(Area(cnt))
+        # La surface est évidemment dépendante du facteur de grandissement
+        # sans grandissement on obtient une surface de l'ordre de 2500
+        # il faudra construire un étalonnage en fonction du grandissement image réelle
+
+        if area == max_area: continue
+        ratio = (np.sqrt(area) - 1) / shape[0]
+        # print("Area=", area, ratio)
+
+        return ratio
+
+        break
+    return 0
+
 
 def handle_arguments():
     argParser = argparse.ArgumentParser()
 
-    argParser.add_argument("-formes", type=int, default=8, help="nombre de formes pour l'entrainement")
+    # argParser.add_argument("-formes", type=int, default=8, help="nombre de formes pour l'entrainement")
 
-    argParser.add_argument("-cell", type=int, default=100, help="taille de la figure elle_même")
-    argParser.add_argument("-space", type=int, default=30, help="espace autour de la figure")
-    argParser.add_argument("-margin", type=int, default=40, help="marge entre figures")
-    argParser.add_argument("-line", type=int, default=2, help="line width")
+    # argParser.add_argument("-cell", type=int, default=100, help="taille de la figure elle_même")
+    # argParser.add_argument("-space", type=int, default=30, help="espace autour de la figure")
+    # argParser.add_argument("-margin", type=int, default=40, help="marge entre figures")
+    # argParser.add_argument("-line", type=int, default=2, help="line width")
 
-    argParser.add_argument("-data", "--data_size", type=int, default=100, help="nombre de données for traning")
+    # argParser.add_argument("-data", "--data_size", type=int, default=100, help="nombre de données for traning")
 
     group1 = argParser.add_mutually_exclusive_group()
     group1.add_argument("-figures", action="store_true", help="build figures")
@@ -901,8 +1005,7 @@ def handle_arguments():
 
     args = argParser.parse_args()
 
-    return args.cell, args.space, args.margin, args.line,\
-           args.data_size, args.formes, args.figures, args.figure, \
+    return args.figures, args.figure, \
            args.build_data, args.build_model, \
            args.run
 
@@ -911,16 +1014,33 @@ def handle_arguments():
 
 
 def main():
-    cell, space, margin, line, data_size, form_number, build_figures, figure, build_data, build_model, run = handle_arguments()
-
     figures = Figures()
+
+    with open(DATA + "/dataset/figure.conf", "r") as f:
+        line = f.readline()
+        # cell=30 space=5 margin=20 line=1
+        m = re.match("cell=(\d+) space=(\d+) margin=(\d+) line=(\d+) data_size=(\d+) form_number=(\d+)", line)
+        # print(line, m[1], m[2], m[3], m[4])
+        try:
+            cell = int(m[1])
+            space = int(m[2])
+            margin = int(m[3])
+            line = int(m[4])
+
+            data_size = int(m[5])
+            form_number = int(m[6])
+            figures.set_zoom(cell, space, margin, line)
+        except:
+            print("pas de configuration pour les figures")
+            exit()
+
+    build_figures, figure, build_data, build_model, run = handle_arguments()
 
     # ============ generlal parameters=================
     os.makedirs(DATA + "./dataset", mode=0o750, exist_ok=True)
     os.makedirs(DATA + "./data", mode=0o750, exist_ok=True)
 
     if build_figures:
-        figures.set_zoom(cell, space, margin, line)
         if figure is None:
             print("Formes> Rebuild all figures")
             figures.prepare_source_images(form_number=form_number)
@@ -928,25 +1048,8 @@ def main():
             print("Formes> Rebuild figure # {}".format(figure))
             figures.prepare_source_images(form_number=form_number, rebuild_forme=figure)
 
-        with open(DATA + "/dataset/figure.conf", "w+") as f:
-            f.write("cell={} spaceline={} margin={} line={}".format(cell, space, margin, line))
-
         return
     elif run:
-
-        with open(DATA + "/dataset/figure.conf", "r") as f:
-            line = f.readline()
-            m = re.match("cell=(\d+) spaceline=(\d) margin=(\d) line=(\d)", line)
-            # print(line, m[1], m[2], m[3], m[4])
-            try:
-                cell = int(m[1])
-                space = int(m[2])
-                margin = int(m[3])
-                line = int(m[4])
-                figures.set_zoom(cell, space, margin, line)
-            except:
-                print("pas de configuration pour les figures")
-                exit()
 
         print("Formes> Run with build_data={} build_model={}".format(build_data, build_model))
     else:
@@ -990,11 +1093,36 @@ def main():
         for i in range(tests):
             # n = randint(0, tests)
             # print("n=", n)
-            A = x_test[i:i+1, :, :, :]
-            B = int(y_test[i:i+1][0])
+            A = x_test[i:i+1, :, :, :][0]
+
+            img = np.zeros((A.shape[0], A.shape[1], 3), np.uint8)
+
+            for c in range(80):
+                for r in range(80):
+                    e = A[c, r, 0]
+                    if e < 0.99:
+                        img[c, r, 0] = 0
+                        img[c, r, 1] = 0
+                        img[c, r, 2] = 0
+                    else:
+                        img[c, r, 0] = 255
+                        img[c, r, 1] = 255
+                        img[c, r, 2] = 255
+
+
+
+            # print(img.shape)
+
+            ratio = find_figures(img)
+
+            # cv.imshow("A", img)
+            # cv.waitKey(0)
+
+            B = int(y_test[i:i + 1][0])
 
             now = datetime.datetime.now()
-            result = model(A)
+            # print("data.shape", x_test[i:i + 1, :, :, :].shape)
+            result = model(x_test[i:i + 1, :, :, :])
             t = datetime.datetime.now() - now
             r = np.zeros(8)
             for k in range(8):
@@ -1002,19 +1130,31 @@ def main():
 
             predmax = np.argmax(r)
 
-            if predmax != B:
-                # le max ne correspond pas à la théorie
-                # print("i=", i, "A", A.shape, B, "pred=", predmax, "durée=", t, "score=", r)
-                scores1.append(r[B])         # résultat pour la théorie
-                scores2.append(r[predmax])   # résultat max
-            else:
-                scores3.append(r[predmax])   # résultat conforme à la théorie
+            if predmax == B:
+                scores1.append(ratio)
 
-            if r[predmax] > 0.99 and predmax != B:
-                scores4.append(r[predmax])   # résultat non conforme à la théorie
+            if False:
+
+                if predmax != B:
+                    # le max ne correspond pas à la théorie
+                    # print("i=", i, "A", A.shape, B, "pred=", predmax, "durée=", t, "score=", r)
+                    scores1.append(r[B])         # résultat pour la théorie
+                    scores2.append(r[predmax])   # résultat max
+                else:
+                    print("conforme", B, figures.forms[B])
+                    scores3.append(r[predmax])   # résultat conforme à la théorie
+
+                if r[predmax] > 0.99 and predmax != B:
+                    scores4.append(r[predmax])   # résultat non conforme à la théorie
 
 
 
+        plt.figure(figsize=[4, 4])
+        plt.title("ratio")
+        plt.plot(range(len(scores1)), scores1)
+        plt.show()
+
+        """
         plt.figure(figsize=[4, 4])
         plt.title("non conforme")
         plt.scatter(scores1, scores2)
@@ -1026,6 +1166,7 @@ def main():
             plt.title("non conforme seuil")
             plt.plot(range(len(scores4)), scores4)
         plt.show()
+        """
 
     return
 

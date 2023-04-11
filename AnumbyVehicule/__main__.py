@@ -1,9 +1,12 @@
+import argparse
+
 import os
 import numpy as np
 import cv2 as cv
 from random import *
 import random as rng
 import math
+import re
 
 import tensorflow as tf
 from tensorflow import keras
@@ -173,9 +176,9 @@ class Help(object):
 # Représentation de la table de jeu
 # on va y installer les figures tournées alatoirement
 class Table(object):
-    def __init__(self):
-        self.width = 3072
-        self.height = 3000
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
         self.image = None
         self.hidden = None
         # Lors des essais on doit réinitialiser l'image et la liste des zones où on installe les figures
@@ -188,15 +191,16 @@ class Table(object):
         # on installe le fond clippé à la taille de la table
         with_fond = True
 
-        self.image = np.ones((self.height, self.width, 3), np.uint8)
+        self.image = np.ones((self.height, self.width, 3), np.uint8) * 130
 
         if with_fond:
             fond_origin = cv.imread(FOND + '/fond.jpg')
-            self.image[:, :, :] = fond_origin[:self.height, :self.width, :]
-        else:
-            self.image[:, :, 0] *= 130
-            self.image[:, :, 1] *= 130
-            self.image[:, :, 2] *= 130
+            shape = fond_origin.shape
+            w = shape[1]
+            if w > self.width: w = self.width
+            h = shape[0]
+            if h > self.height: h = self.height
+            self.image[:h, :w, :] = fond_origin[:h, :w, :]
 
         self.hidden = np.ones((self.height, self.width, 3), np.uint8)
         self.hidden[:,:,:] = self.image[:,:,:]
@@ -210,9 +214,8 @@ class Table(object):
 
     # au fur et à mesure que l'on installe les figures, on vérifie si la position proposée
     # n'est pas trop proche d'aucune figure déjà installée
-    def test_occupe(self, n, y, x):
+    def test_occupe(self, n, y, x, margin):
         # print("test_occupe> 1 ================== est-ce que ", n, "(y, x)", y, x, "peut s'installer ?")
-        margin = 50
         if len(self.zones) == 0:
             # print("test_occupe> 2 crée la première zone (n, y, x)", n, y, x)
             self.zones.append((n, y, x))
@@ -276,7 +279,7 @@ class Table(object):
                 # print("fond size=", table.height, table.width, "y, x=", y, x, "b_w, b_h=", b_w, b_h, "center=", center)
 
                 # on teste si cette nouvelle position est compatible avec les figures déjà installées
-                test = table.test_occupe(n, y, x)
+                test = table.test_occupe(n, y, x, margin)
                 if test:
                     # print(essai, "rotation_positionnement> libre n=", n, "y, x=", y, x)
                     return rotated, y, x
@@ -409,14 +412,19 @@ def crop(to_img, n, pos, img):
 
 # Simulation de la Camera: on recopie une partie de l'image de la table située à la position courante du robot
 class Camera(object):
-    def __init__(self):
-        self.width = 400
-        self.height = 400
+    def __init__(self, size, model, data_min, data_max, forms, pattern):
+        self.width = size
+        self.height = size
         self.margin = 60
         self.w2 = int(self.width/2)
         self.h2 = int(self.height/2)
         self.camera = None
         self.hidden = None
+        self.model = model
+        self.data_min = data_min
+        self.data_max = data_max
+        self.forms = forms
+        self.pattern = pattern
 
     def draw(self, table, model, x, y):
         # le robot ne peut jamais s'approcher trop près des bord de la table
@@ -456,104 +464,150 @@ class Camera(object):
         # on dessine un rectangle vert
         cv.rectangle(self.camera, (extra, extra), (extra + self.width, extra + self.height), G, 1)
 
-        self.find_figures(model, self.camera)
+        form_find_figures(self.camera, self.model, self.forms, self.data_min, self.data_max, self.pattern)
 
         cv.imshow("camera", self.camera)
         # cv.waitKey()
         return
 
-    # Détecte contours des figures installées sur la table ou sur l'image de la caméra
-    # ATTENTION: il reste à étalonner la taille typique "area"
-    def find_figures(self, model, src):
-        src_gray = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
-        src_gray = cv.blur(src_gray, (3, 3))
-        ret, thresh = cv.threshold(src_gray, 200, 255, cv.THRESH_BINARY)
-        contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-        for i, cnt in enumerate(contours):
-            x, y, w, h = cv.boundingRect(cnt)
 
-            # on attend un contour carré pour les figures
-            ratio = AspectRatio(cnt)
-            if ratio > 1.02: continue
-            if ratio < 0.98: continue
+# cv.circle(img=src, center=(int(xc), int(yc)), radius=2, color=color, lineType=cv.FILLED)
 
-            area = Area(cnt)
-            # La surface est évidemment dépendante du facteur de grandissement
-            # sans grandissement on obtient une surface de l'ordre de 2500
-            # il faudra construire un étalonnage en fonction du grandissement image réelle
-            if area < 2000: continue
-            # if area > 3000: continue
+def extract_contour(src, cnt, data_min, data_max):
+    def demi_plan(src, x1, x2, y1, y2):
+        x1 = xcorners[0]
+        y1 = ycorners[0]
+        x2 = xcorners[1]
+        y2 = ycorners[1]
+        m = (y2 - y1) / (x2 - x1)
+        p = y1 - m * x1
 
-            # color = COLOR_X
-            color = R
-            # cv.drawContours(src, contours, i, G, 2)
+        for x in range(x1, x2):
+            for y in range(y1, y2):
+                yy = m * x + p
+                if y < yy:
+                    src[y, x, 0] = 0
+                    src[y, x, 1] = 0
+                    src[y, x, 2] = 255
+                if y == yy:
+                    src[y, x, 0] = 0
+                    src[y, x, 1] = 255
+                    src[y, x, 2] = 255
+                else:
+                    src[y, x, 0] = 255
+                    src[y, x, 1] = 0
+                    src[y, x, 2] = 0
 
-            """
-            m = 10
-            draw_text(src, "({:d},{:2.2f})".format(i, ratio), x - m, y - m, color)
-            """
+    x, y, w, h = cv.boundingRect(cnt)
+    area = Area(cnt)
+    xcorners, ycorners, center, alpha, radius = BoundingRectangle(cnt)
+    xc = int(center[0])
+    yc = int(center[1])
+    side = int(np.sqrt(area))
 
-            """
-            xcorners, ycorners, center, alpha, radius = BoundingRectangle(cnt)
-    
-            print(i, "AspectRatio=", "{:2.2f}".format(ratio), "area", area, "rectangle", x, y, w, h, xcorners, ycorners)
-    
-            color = R
-            for corner in range(4):
-                cv.line(src, (xcorners[corner], ycorners[corner]), (xcorners[corner + 1], ycorners[corner + 1]), color, 2)
-            """
+    print("rectangle", x, y, w, h, xcorners, ycorners, "center", xc, yc)
 
-            # on va extraire la partie de l'image de la caméra pour la soumettre au RdN et reconnaître la figure
-            # on va commencer par nettoyer la figure (enlever le fond)
-            m = 10
-            y1 = y - m
-            y2 = y1 + h + 2*m
-            x1 = x - m
-            x2 = x1 + w + 2*m
+    for s in range(4):
+        demi_plan(src, xcorners[s], xcorners[s + 1], ycorners[s], ycorners[s + 1])
 
-            if y1 < 0: return
-            if y2 >= src.shape[0]: return
-            if x1 < 0: return
-            if x2 >= src.shape[1]: return
+    cv.imshow("half", src)
+    cv.waitKey(0)
 
-            cv.rectangle(src, (x1, y1), (x2, y2), R, 1)
+    x1 = xc - side
+    x2 = xc + side
+    y1 = yc - side
+    y2 = yc + side
 
-            # extraction de ce rectangle
+    if (x2 - x1) != (y2 - y1): return
 
-            extract = np.zeros((y2 - y1, x2 - x1, 3), np.uint8)
+    cv.rectangle(src, (x1, y1), (x2, y2), G, 1)
 
-            extract[:, :, :] = self.hidden[y1:y2, x1:x2, :]
+    extract = np.zeros((y2 - y1, x2 - x1, 3), np.uint8)
 
-            mask = (extract < 5) * 255
-            red = mask.astype(np.uint8)
-            red[:, :, 0:2] = 0
-            extract = red | extract
+    extract[:, :, :] = src[y1:y2, x1:x2, :]
 
-            crop(extract, 0, (0, 0), extract)
+    mask = (extract < 1) * 255
+    red = mask.astype(np.uint8)
+    red[:, :, 0:2] = 0
+    extract = red | extract
 
-            resized = cv.resize(extract, (63, 63), interpolation=cv.INTER_LINEAR)
+    crop(extract, 0, (0, 0), extract)
+    resized = cv.resize(extract, (80, 80), interpolation=cv.INTER_LINEAR)
+    a = np.zeros((1, 80, 80, 1), np.float64)
+    for i in range(3):
+        a[0, :, :, 0] += resized[:, :, i]
+    a = a / 3.
 
-            print(src.shape, "Y", y1, y2, y2-y1, "X", x1, x2, x2-x1, "extract", extract.shape, "resized", resized.shape)
+    a = a / data_max
 
-            try:
-                cv.destroyWindow("----extract----")
-            except:
-                pass
-            cv.imshow("----extract----", resized)
+    return a
 
-            data = np.zeros([1, 63, 63, 1])
-            for j in range(3):
-                data[0, :, :, 0] += resized[:, :, j]
 
-            data /= 3
+def form_find_figures(src, model, forms, data_min, data_max, pattern):
+    src_gray = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
 
-            data /= 255.
+    shape = pattern[0].shape
+    max_area = (shape[0] - 1) * (shape[1] - 1)
 
-            pred = model(data)
-            prediction = np.argmax(pred, axis=-1)
-            print("data", data.shape, "pred=", prediction[0])
+    # print(shape, max_area)
+    # src_gray = cv.blur(src_gray, (3, 3))
+    ret, thresh = cv.threshold(src_gray, 200, 255, cv.THRESH_BINARY)
+    contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    for i, cnt in enumerate(contours):
+        x, y, w, h = cv.boundingRect(cnt)
 
-            # cv.circle(img=src, center=(int(xc), int(yc)), radius=2, color=color, lineType=cv.FILLED)
+        # on attend un contour carré pour les figures
+        ratio = AspectRatio(cnt)
+        if ratio > 1.02: continue
+        if ratio < 0.98: continue
+
+        area = int(Area(cnt))
+        # if area <= 10: continue
+        # La surface est évidemment dépendante du facteur de grandissement
+        # sans grandissement on obtient une surface de l'ordre de 2500
+        # il faudra construire un étalonnage en fonction du grandissement image réelle
+
+        if area >= max_area:
+            new_figure = i
+            continue
+
+        if i == new_figure + 1:
+            ratio = (np.sqrt(area) - 1) / shape[0]
+            print(i, "Area=", area, ratio, max_area)
+
+            cv.drawContours(src, contours, i, R, 2)
+
+            A = None
+
+            extract = extract_contour(src, cnt, data_min, data_max)
+
+            # print("data.shape", pattern[i:i + 1, :, :, :].shape)
+
+            a = np.zeros_like(pattern)
+            for r in range(a.shape[1]):
+                for c in range(a.shape[2]):
+                    a[0, r, c, 0] = extract[0, r, c, 0]
+
+            print("shapes=", extract.shape, a.shape)
+
+            result = model(a)
+            r = np.zeros(8)
+            for k in range(8):
+                r[k] = result[0, k]
+            a_test = np.argmax(r)
+
+            print("prédiction=", forms[a_test])
+
+            cv.imshow("extract", a[0])
+            cv.waitKey()
+
+
+
+            # return ratio
+
+        # break
+    return 0
+
 
 
 
@@ -572,19 +626,54 @@ def draw_text(img, text, x, y, color):
 ===================================================================================================================
 """
 
+def handle_arguments():
+    argParser = argparse.ArgumentParser()
+
+    argParser.add_argument("-width", type=int, default=800, help="Largeur de la table")
+    argParser.add_argument("-height", type=int, default=600, help="Hauteur de la table")
+    argParser.add_argument("-camera_size", type=int, default=100, help="Taille de la caméra (carrée)")
+
+    argParser.add_argument("-scale", type=int, default=None, help="Facteur d'échelle pour toutes les dimensions")
+
+
+    args = argParser.parse_args()
+
+    return args.width, args.height, args.camera_size, args.scale
+
+
 
 
 def main():
     print("Vehicule")
 
+    width, height, camera_size, scale = handle_arguments()
+
+    if scale is not None:
+        width = 800 * scale
+        height = 600 * scale
+        camera_size = 100 * scale
+
+    with open(DATA + "/run/minmax.txt", "r") as f:
+        line = f.readline()
+        m = re.match("min=(\d+.\d+) max=(\d.\d+)", line)
+        # print(line, m[1], m[2])
+        try:
+            data_min = float(m[1])
+            data_max = float(m[2])
+        except:
+            print("pas de configuration minmax")
+            exit()
+
     # Initialisations
     forms = ["Rond", "Square", "Triangle", "Star5", "Star4", "Eclair", "Coeur", "Lune"]
-    table = Table()
-    camera = Camera()
-    help = Help()
-
     save_dir = DATA + "/run/models/best_model.h5"
     model = keras.models.load_model(save_dir)
+    pattern = np.load(DATA + "/dataset/pattern.npy", allow_pickle=True)
+
+    table = Table(width, height)
+    camera = Camera(camera_size, model, data_min, data_max, forms, pattern)
+
+    help = Help()
 
     # initialisation des formes brutes
     images = []
@@ -598,6 +687,9 @@ def main():
     for f, form in enumerate(forms):
         table.install_form(table, f, images[f])
 
+    # il existe deux versions de l'image de la table:
+    #  - une qui est affichée (avec les traces de travail)
+    #  - une qui ne contient que le fond et les images tournées
     table.update_hidden()
 
     # dessine une barrière pour les limites de déplacement du véhicule sur la table
@@ -605,11 +697,13 @@ def main():
     cv.rectangle(table.image, (m, m), (table.width - m - 1, table.height - m - 1), (0, 255, 255), 1)
 
     # pour tester on cherche toutes les fiures installées sur la table
-    # table.find_figures(model table.image)
+    form_find_figures(table.image, model, forms, data_min, data_max, pattern)
 
     # première visualisation de la table
     cv.imshow("table", table.image)
-    # cv.waitKey()
+    cv.waitKey()
+
+    return
 
     # gestion des déplacement du véhicule.
     # le véhicule est positionné au départ au milieu de la table
@@ -688,6 +782,7 @@ def main():
         # print("t=", t, "(x, y)=", x, y, "v=", v, "alpha=", alpha, "a=", a)
         table.draw()
         camera.draw(table, model, x, y)
+
         # camera.find_figures(model, image)
         # cv.waitKey(0)
 
