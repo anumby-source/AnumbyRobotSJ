@@ -6,6 +6,8 @@ import numpy as np
 
 import re
 import os
+from os import listdir
+from os.path import isfile, join
 
 import tensorflow as tf
 from tensorflow import keras
@@ -79,8 +81,7 @@ class Figures(object):
         self.draw_forms = [self.drawRond, self.drawSquare, self.drawTriangle, self.drawStar5,
                            self.drawStar4, self.drawEclair, self.drawCoeur, self.drawLune,
                            self.drawHexagone, self.drawPentagone, self.drawLogo, self.drawD]
-        self.forms = ["Rond", "Square", "Triangle", "Star5",
-                      "Star4", "Eclair", "Coeur", "Lune",
+        self.forms = ["Rond", "Square", "Triangle", "Star5", "Star4", "Eclair", "Coeur", "Lune",
                       "Hexagone", "Pentagone", "Logo", "D"]
         self.line_width = 1
 
@@ -612,9 +613,9 @@ def transformation_model(height, width):
     # general range of transformation
     transformation_range = 0.08
     return tf.keras.Sequential([
-        keras.layers.RandomZoom(-0.2, fill_mode="nearest"),
+        keras.layers.RandomZoom(-0.5, fill_mode="nearest"),
         keras.layers.RandomRotation(transformation_range),
-        keras.layers.RandomTranslation(transformation_range, transformation_range, fill_mode="nearest"),
+        # keras.layers.RandomTranslation(transformation_range, transformation_range, fill_mode="nearest"),
         # keras.layers.RandomCrop(int(height*scale), int(width*scale)),
         # keras.layers.RandomContrast(0.5),
     ])
@@ -623,13 +624,13 @@ def add_noise(image):
     height, width = image.shape[:2]
 
     """
-    n taches de bruit [0, 10]
-    pour chaque tache, on ajoute m pixels de bruit [0..30]
-    la largeur de la tache vaut sigma [0 .. 20]
+    n taches de bruit [0, n_max]
+    pour chaque tache, on ajoute m pixels de bruit [0..m_max]
+    la largeur de la tache vaut sigma [0 .. sigma_max]
     """
-    n_max = 20
+    n_max = 5
+    m_max = 10
     sigma_max = 30
-    m_max = 100
 
     n = int(randrange(0, n_max))
     for i in range(n):
@@ -677,12 +678,12 @@ def transformation(image):
     """
 
     data = np.zeros([height, width, 3], np.float32)
-    data[:, :, 0] = image[:, :]
-    data[:, :, 1] = image[:, :]
-    data[:, :, 2] = image[:, :]
+    data[:, :, 0] = image[:, :, 0]
+    data[:, :, 1] = image[:, :, 1]
+    data[:, :, 2] = image[:, :, 2]
 
     X = np.zeros([height, width, 3], np.float32)
-    data = add_noise(data)
+    # data = add_noise(data)
 
     img = transformed_image(data).numpy()
     # print(img.shape, type(img))
@@ -696,7 +697,7 @@ def transformation(image):
     return img_finale
 
 
-def build_data(data_size, images):
+def build_data(figures, data_size, images):
     # on sauvegarde les data non normlisées
 
     """
@@ -708,12 +709,34 @@ def build_data(data_size, images):
         return x
     """
 
+    captures = dict()
+
+    captured_images = []
+
+    path = DATA + "/captures/"
+    for f in [f for f in listdir(path) if isfile(join(path, f))]:
+        m = re.match("capture_([^_]+)_(\d+).jpg", f)
+        if m is not None:
+            # print(m[1], m[2])
+            name = m[1]
+            captures[name] = int(m[2])
+            img = cv.imread(path + f)
+            if name == "fond":
+                cl = 8
+            else:
+                cl = figures.forms.index(name)
+            captured_images.append((img, cl))
+
+    print(captures)
+    print([(i[0].shape, i[1]) for i in captured_images])
+
     # vf = np.vectorize(f)
 
-    shape = images[0].shape
+    # shape = images[0].shape
+    shape = captured_images[0][0].shape
 
     print("build_data> ", shape)
-    image_number = len(images)
+    image_number = len(captured_images)
 
     # sélectionne la proportion de données dans le training set et le test set
     frac = 0.85
@@ -721,7 +744,10 @@ def build_data(data_size, images):
     data_id = 0
 
     for i in range(data_size):
-        for image_id, raw_img in enumerate(images):
+        for captured_image in captured_images:
+            raw_img = captured_image[0]
+            image_id = captured_image[1]
+
             if data_id % 1000 == 0: print("generate data> data_id = ", data_id)
             # print(raw_img.shape)
 
@@ -831,7 +857,7 @@ def build_model_v1(shape, form_number):
     model.add(keras.layers.Input((shape[1], shape[2], 1)))
 
     model.add(keras.layers.Conv2D(48, (3, 3), activation='relu'))
-    model.add(keras.layers.MaxPooling2D((2, 2)))
+    # model.add(keras.layers.MaxPooling2D((2, 2)))
     # model.add(keras.layers.Dropout(0.2))
 
     model.add(keras.layers.Conv2D(48, (3, 3), activation='relu'))
@@ -840,9 +866,9 @@ def build_model_v1(shape, form_number):
 
     model.add(keras.layers.Flatten())
     model.add(keras.layers.Dense(128, activation='relu'))
-    model.add(keras.layers.Dropout(0.5))
+    # model.add(keras.layers.Dropout(0.5))
 
-    model.add(keras.layers.Dense(form_number, activation='softmax'))
+    model.add(keras.layers.Dense(form_number + 1, activation='softmax'))
 
     model.summary()
 
@@ -884,7 +910,7 @@ def do_run(figures, form_number, data_size, rebuild_data, rebuild_model, rebuild
         # print("run> ", type(images), images)
 
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Generating data from images")
-        x_train, y_train, x_test, y_test = build_data(data_size, images)
+        x_train, y_train, x_test, y_test = build_data(figures, data_size, images)
     else:
         x_train, y_train, x_test, y_test = load_data()
 
@@ -924,8 +950,8 @@ def do_run(figures, form_number, data_size, rebuild_data, rebuild_model, rebuild
         model = build_model_v1(x_train.shape, form_number)
 
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Start training")
-        batch_size  = 512
-        epochs      =  16
+        batch_size  = 128
+        epochs      = 32
 
         savemodel_callback = keras.callbacks.ModelCheckpoint(filepath=save_dir, verbose=0, save_best_only=True)
 
@@ -1018,9 +1044,9 @@ def main():
 
     with open(DATA + "/dataset/figure.conf", "r") as f:
         line = f.readline()
-        # cell=30 space=5 margin=20 line=1
+        #             cell=60 pace=20 margin=30 line=10 data_size=5000 form_number=8
         m = re.match("cell=(\d+) space=(\d+) margin=(\d+) line=(\d+) data_size=(\d+) form_number=(\d+)", line)
-        # print(line, m[1], m[2], m[3], m[4])
+        print(line, m[1], m[2], m[3], m[4])
         try:
             cell = int(m[1])
             space = int(m[2])
@@ -1070,18 +1096,24 @@ def main():
 
     print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Predictions")
 
-    test_global = False
+    test_global = True
     if test_global:
-        result = model(x_test)
-        y_pred = np.argmax(result, axis=-1)
-        pwk.plot_images(x_test, y_test, range(10 * 8), columns=8, x_size=1, y_size=1, y_pred=y_pred,
-                        save_as=LOG + 'Predictions.jpg')
-        errors = [i for i in range(len(x_test)) if y_pred[i] != y_test[i]]
-        # print("errors", errors)
-        # errors=errors[:min(24,len(errors))]
-        # pwk.plot_images(x_test, y_test, errors[:15], columns=8, x_size=2, y_size=2, y_pred=y_pred, save_as=LOG + 'Errors')
+        fraction = 20
+        batch = int(tests/fraction)
+        n = 0
+        for i in range(fraction):
+            n1 = i*batch
+            n2 = n1 + batch - 1
+            result = model(x_test[n1:n2-1])
+            y_pred = np.argmax(result, axis=-1)
+            pwk.plot_images(x_test[n1:n2-1], y_test[n1:n2-1], range(8 * 8), columns=8, x_size=1, y_size=1, y_pred=y_pred,
+                            save_as=LOG + 'Predictions.jpg')
+            # errors = [i for i in range(len(x_test)-1) if y_pred[i] != y_test[i]]
+            # print("errors", errors)
+            # errors=errors[:min(24,len(errors))]
+            # pwk.plot_images(x_test, y_test, errors[:15], columns=8, x_size=2, y_size=2, y_pred=y_pred, save_as=LOG + 'Errors')
 
-        pwk.plot_confusion_matrix(y_test, y_pred, range(8), normalize=True, save_as=LOG + 'Confusion.jpg')
+            pwk.plot_confusion_matrix(y_test[n1:n2-1], y_pred, range(8), normalize=True, save_as=LOG + 'Confusion.jpg')
     else:
         test_number = 1
         errors = 0

@@ -574,6 +574,8 @@ def plot_confusion_matrix(y_true, y_pred,
     else:
         save_fig(save_as)
 
+    plt.close()
+
 
 def display_confusion_matrix(y_true, y_pred, labels=None, color='green',
                              font_size='12pt', title="#### Confusion matrix is :"):

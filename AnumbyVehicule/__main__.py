@@ -25,6 +25,8 @@ B = (255, 0, 0)
 M = (255, 0, 255)
 C = (255, 255, 0)
 Y = (0, 255, 255)
+BL = (0, 0, 0)
+W = (255, 255, 255)
 COLOR_X = (rng.randint(0, 256), rng.randint(0, 256), rng.randint(0, 256))
 
 
@@ -173,6 +175,98 @@ class Help(object):
         cv.imshow("Help", self.image)
 
 
+
+def transformation_model(height, width):
+    """
+    Crop(height, width)
+    Flip
+    Translation(height_factor, width_factor)
+    Rotation
+    Zoom(height_factor)
+    Height(factor)
+    Width(factor)
+    Contrast(factor)
+    """
+    # scale = 1.5
+
+    # general range of transformation
+    transformation_range = 0.08
+    return tf.keras.Sequential([
+        keras.layers.RandomZoom(-0.1, fill_mode="nearest"),
+        keras.layers.RandomRotation(transformation_range),
+        # keras.layers.RandomTranslation(transformation_range, transformation_range, fill_mode="nearest"),
+        # keras.layers.RandomCrop(int(height*scale), int(width*scale)),
+        # keras.layers.RandomContrast(0.5),
+    ])
+
+def add_noise(image):
+    height, width = image.shape[:2]
+
+    """
+    n taches de bruit [0, n_max]
+    pour chaque tache, on ajoute m pixels de bruit [0..m_max]
+    la largeur de la tache vaut sigma [0 .. sigma_max]
+    """
+    n_max = 5
+    m_max = 10
+    sigma_max = 30
+
+    n = int(randrange(0, n_max))
+    for i in range(n):
+        xs = []
+        ys = []
+        x0 = int(randrange(0, width))
+        y0 = int(randrange(0, height))
+        sigma = int(randrange(0, sigma_max))
+        m = int(randrange(0, m_max))
+        for j in range(m):
+            x = int(gauss(mu=float(x0), sigma=sigma))
+            y = int(gauss(mu=float(y0), sigma=sigma))
+
+            # b = int(randrange(0, 255))
+            # g = int(randrange(0, 255))
+            # r = int(randrange(0, 255))
+
+            if x >= 0 and x < width and y >= 0 and y < height:
+                # print("noise", "tache=", i, "pixel=", j, "wh=", width, height, "xy=", x, y, "bgr=", r, g, r)
+                image[y, x, 0] = 0
+                image[y, x, 1] = 0
+                image[y, x, 2] = 0
+
+    """
+    cv.imshow("noised image", image)
+    k = cv.waitKey(0)
+    if k == 27 or k == 113:
+        exit()
+    """
+
+    return image
+
+
+def transformation(image):
+    # print("transformation> ", type(image), image.shape)
+
+    height, width = image.shape[:2]
+
+    mode = "tf"
+
+    transformed_image = transformation_model(height, width)
+
+    """
+    On voudrait ajouter quelques pixels parasites sur les images produites
+    """
+
+    data = np.zeros([height, width, 3], np.float32)
+    data[:, :, :] = image[:, :, :]
+
+    img = transformed_image(data).numpy()
+    # print(img.shape, type(img))
+
+    return img
+
+
+
+
 # Représentation de la table de jeu
 # on va y installer les figures tournées alatoirement
 class Table(object):
@@ -304,6 +398,76 @@ class Table(object):
         crop(table.image, n, pos=(y, x), img=rotated)
         # draw_text(table.image, "{}".format(n), x, y, R)
         # print("rotation_positionnement> n=", n, "y, x=", y, x)
+
+    def install_form_v2(self, table, n, image_origin, pattern, model, forms, data_max):
+        print("install_form_v2")
+
+        height, width = image_origin.shape[:2]
+
+        # colorie la figure en rouge (une figure brute ne contient que des pixels noirs)
+        mask = (image_origin < 5) * 255
+        image = mask.astype(np.uint8)
+        image[:, :, 0:2] = 0
+        image = image | image_origin
+
+        def select_trained():
+
+            essai = 0
+
+            while True:
+                transformed_image = transformation(image)
+                # print("transformed_image", transformed_image.shape)
+
+                img_finale = np.zeros([transformed_image.shape[0], transformed_image.shape[1]])
+                for j in range(3):
+                    img_finale[:, :] += transformed_image[:, :, j]
+
+                img_finale /= 3
+                img_finale /= data_max
+
+                a = np.zeros_like(pattern)
+                for r in range(a.shape[1]):
+                    for c in range(a.shape[2]):
+                        a[0, r, c, 0] = img_finale[r, c]
+
+                result = model(a)
+                r = np.zeros(8)
+                for k in range(8):
+                    r[k] = result[0, k]
+                a_test = np.argmax(r)
+
+                if n == a_test:
+                    break
+                # print("prédiction> essai=", essai, "n=", n, a_test, "r=", r[n], r[a_test], forms[a_test])
+                essai += 1
+
+            print("===> essais=", essai, "n=", n, "r=", r[n])
+
+            return transformed_image
+
+        image = select_trained()
+
+        essai_position = 0
+        while True:
+            # on positionne la figure sur la table
+            margin = 80
+            y = randrange(margin, table.height - margin)
+            x = randrange(margin, table.width - margin)
+            # print("fond size=", table.height, table.width, "y, x=", y, x, "b_w, b_h=", b_w, b_h, "center=", center)
+
+            # on teste si cette nouvelle position est compatible avec les figures déjà installées
+            test = table.test_occupe(n, y, x, margin)
+            if test:
+                cv.imshow("origin", image_origin)
+                cv.imshow("transformed", image)
+                cv.waitKey(0)
+
+                # print(essai, "rotation_positionnement> libre n=", n, "y, x=", y, x)
+
+                return image, y, x
+            else:
+                # print(essai, "rotation_positionnement> occupé n=", n, "y, x=", y, x)
+                essai_position += 1
 
 
 
@@ -473,71 +637,73 @@ class Camera(object):
 
 # cv.circle(img=src, center=(int(xc), int(yc)), radius=2, color=color, lineType=cv.FILLED)
 
+images = 0
+
 def extract_contour(src, cnt, data_min, data_max):
-    def demi_plan(src, x1, x2, y1, y2):
-        x1 = xcorners[0]
-        y1 = ycorners[0]
-        x2 = xcorners[1]
-        y2 = ycorners[1]
+    global images
+    def demi_plan(a, c, x1, x2, y1, y2):
         m = (y2 - y1) / (x2 - x1)
         p = y1 - m * x1
 
-        for x in range(x1, x2):
-            for y in range(y1, y2):
+        # cv.line(a, [x1, y1], [x2, y2], c, 1)
+
+        print("half m=", m, "p=", p, "x1, x2=", x1, x2, "y1, y2=", y1, y2)
+
+        dy = y2 - y1
+
+        for x in range(min(x1, x2), max(x1, x2)):
+            for y in range(min(y1, y2), max(y1, y2)):
                 yy = m * x + p
-                if y < yy:
-                    src[y, x, 0] = 0
-                    src[y, x, 1] = 0
-                    src[y, x, 2] = 255
-                if y == yy:
-                    src[y, x, 0] = 0
-                    src[y, x, 1] = 255
-                    src[y, x, 2] = 255
+
+                # if (m >= 0 and y > yy) or (m < 0 and y < yy):
+                if y > yy:
+                    if (m >= 0 and dy < 0) or (m < 0 and dy >= 0):
+                        a[y, x, 0] = c[0]
+                        a[y, x, 1] = c[1]
+                        a[y, x, 2] = c[2]
                 else:
-                    src[y, x, 0] = 255
-                    src[y, x, 1] = 0
-                    src[y, x, 2] = 0
+                    if (m >= 0 and dy > 0) or (m < 0 and dy < 0):
+                        a[y, x, 0] = c[0]
+                        a[y, x, 1] = c[1]
+                        a[y, x, 2] = c[2]
+
 
     x, y, w, h = cv.boundingRect(cnt)
-    area = Area(cnt)
     xcorners, ycorners, center, alpha, radius = BoundingRectangle(cnt)
-    xc = int(center[0])
-    yc = int(center[1])
-    side = int(np.sqrt(area))
 
-    print("rectangle", x, y, w, h, xcorners, ycorners, "center", xc, yc)
-
-    for s in range(4):
-        demi_plan(src, xcorners[s], xcorners[s + 1], ycorners[s], ycorners[s + 1])
-
-    cv.imshow("half", src)
-    cv.waitKey(0)
-
-    x1 = xc - side
-    x2 = xc + side
-    y1 = yc - side
-    y2 = yc + side
-
-    if (x2 - x1) != (y2 - y1): return
-
-    cv.rectangle(src, (x1, y1), (x2, y2), G, 1)
-
-    extract = np.zeros((y2 - y1, x2 - x1, 3), np.uint8)
-
+    x1 = min(xcorners)
+    x2 = max(xcorners)
+    y1 = min(ycorners)
+    y2 = max(ycorners)
+    w = x2 - x1
+    h = y2 - y1
+    extract = np.zeros((h, w, 3), np.uint8)
     extract[:, :, :] = src[y1:y2, x1:x2, :]
 
-    mask = (extract < 1) * 255
-    red = mask.astype(np.uint8)
-    red[:, :, 0:2] = 0
-    extract = red | extract
+    print("rectangle", x, y, w, h, xcorners, ycorners)
 
-    crop(extract, 0, (0, 0), extract)
-    resized = cv.resize(extract, (80, 80), interpolation=cv.INTER_LINEAR)
+    corners = len(xcorners) - 1
+    colors = [B, G, R, BL, C, Y]
+
+    """
+    for i in range(corners):
+        cv.line(src, [xcorners[i], ycorners[i]], [xcorners[i + 1], ycorners[i + 1]], G, 1)
+    """
+
+    for s in range(corners):
+        # demi_plan(extract, colors[s], xcorners[s] - x1, xcorners[s + 1] - x1, ycorners[s] - y1, ycorners[s + 1] - y1)
+        demi_plan(extract, W, xcorners[s] - x1, xcorners[s + 1] - x1, ycorners[s] - y1, ycorners[s + 1] - y1)
+
+    cv.imshow("resized", resized)
+    cv.waitKey(0)
+
+    cv.imwrite("images_{:02d}.jpg".format(images), resized)
+    images += 1
+
     a = np.zeros((1, 80, 80, 1), np.float64)
     for i in range(3):
         a[0, :, :, 0] += resized[:, :, i]
     a = a / 3.
-
     a = a / data_max
 
     return a
@@ -549,10 +715,13 @@ def form_find_figures(src, model, forms, data_min, data_max, pattern):
     shape = pattern[0].shape
     max_area = (shape[0] - 1) * (shape[1] - 1)
 
+    images = 0
+
     # print(shape, max_area)
     # src_gray = cv.blur(src_gray, (3, 3))
     ret, thresh = cv.threshold(src_gray, 200, 255, cv.THRESH_BINARY)
     contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    new_figure = None
     for i, cnt in enumerate(contours):
         x, y, w, h = cv.boundingRect(cnt)
 
@@ -562,7 +731,8 @@ def form_find_figures(src, model, forms, data_min, data_max, pattern):
         if ratio < 0.98: continue
 
         area = int(Area(cnt))
-        # if area <= 10: continue
+        if area <= 0: continue
+
         # La surface est évidemment dépendante du facteur de grandissement
         # sans grandissement on obtient une surface de l'ordre de 2500
         # il faudra construire un étalonnage en fonction du grandissement image réelle
@@ -571,13 +741,14 @@ def form_find_figures(src, model, forms, data_min, data_max, pattern):
             new_figure = i
             continue
 
+        if new_figure is None: continue
+
         if i == new_figure + 1:
+            new_figure = None
             ratio = (np.sqrt(area) - 1) / shape[0]
             print(i, "Area=", area, ratio, max_area)
 
-            cv.drawContours(src, contours, i, R, 2)
-
-            A = None
+            # cv.drawContours(src, contours, i, R, 1)
 
             extract = extract_contour(src, cnt, data_min, data_max)
 
@@ -588,7 +759,7 @@ def form_find_figures(src, model, forms, data_min, data_max, pattern):
                 for c in range(a.shape[2]):
                     a[0, r, c, 0] = extract[0, r, c, 0]
 
-            print("shapes=", extract.shape, a.shape)
+            print("shapes=", extract.shape, a.shape, a.dtype)
 
             result = model(a)
             r = np.zeros(8)
@@ -596,10 +767,7 @@ def form_find_figures(src, model, forms, data_min, data_max, pattern):
                 r[k] = result[0, k]
             a_test = np.argmax(r)
 
-            print("prédiction=", forms[a_test])
-
-            cv.imshow("extract", a[0])
-            cv.waitKey()
+            print("prédiction=", r, forms[a_test])
 
 
 
@@ -631,7 +799,7 @@ def handle_arguments():
 
     argParser.add_argument("-width", type=int, default=800, help="Largeur de la table")
     argParser.add_argument("-height", type=int, default=600, help="Hauteur de la table")
-    argParser.add_argument("-camera_size", type=int, default=100, help="Taille de la caméra (carrée)")
+    argParser.add_argument("-camera_size", type=int, default=120, help="Taille de la caméra (carrée)")
 
     argParser.add_argument("-scale", type=int, default=None, help="Facteur d'échelle pour toutes les dimensions")
 
@@ -685,7 +853,9 @@ def main():
     table.reset_image()
 
     for f, form in enumerate(forms):
-        table.install_form(table, f, images[f])
+        table.install_form_v2(table, f, images[f], pattern, model, forms, data_max)
+
+    # exit()
 
     # il existe deux versions de l'image de la table:
     #  - une qui est affichée (avec les traces de travail)
@@ -702,8 +872,6 @@ def main():
     # première visualisation de la table
     cv.imshow("table", table.image)
     cv.waitKey()
-
-    return
 
     # gestion des déplacement du véhicule.
     # le véhicule est positionné au départ au milieu de la table
