@@ -437,6 +437,7 @@ def plot_images(x, y=None, indices='all', columns=12, x_size=1, y_size=1,
         plt.show()
     else:
         save_fig(save_as)
+    # plt.close(fig=fig)
 
 
 def plot_image(x, cm='binary', figsize=(4, 4), interpolation='lanczos', save_as=None):
@@ -537,7 +538,7 @@ def plot_confusion_matrix(y_true, y_pred,
     if cmap is None:
         cmap = plt.get_cmap('Blues')
 
-    plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize)
     plt.imshow(cm, interpolation='nearest', cmap=cmap)
     plt.title(title)
     plt.colorbar()
@@ -574,7 +575,7 @@ def plot_confusion_matrix(y_true, y_pred,
     else:
         save_fig(save_as)
 
-    plt.close()
+    # plt.close(fig=fig)
 
 
 def display_confusion_matrix(y_true, y_pred, labels=None, color='green',

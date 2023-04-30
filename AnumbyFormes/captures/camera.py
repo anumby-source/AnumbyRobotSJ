@@ -217,16 +217,32 @@ while True:
 
     # print("frame.shape", frame.shape)
 
-    form_find_figures(frame, model, forms, data_min, data_max, pattern)
+    # form_find_figures(frame, model, forms, data_min, data_max, pattern)
     cv.imshow('frame', frame)
 
-    """
+    height = frame.shape[1]
+    width = frame.shape[0]
+
+    cy = int(height/2)
+    cx = int(width/2)
+
+    resized = cv.resize(frame[cy-100:cy+100, cx-100:cx+100,:], (80, 80), interpolation=cv.INTER_AREA)
+
+    # cv.imshow('resized', resized)
+
+    pwk.plot_image(resized, save_as=None)
+
+
     a = np.zeros_like(pattern)
     for r in range(a.shape[1]):
         for c in range(a.shape[2]):
-            a[0, r, c, 0] = extract[0, r, c, 0]
+            a[0, r, c, 0] += resized[r, c, 0]
+            a[0, r, c, 0] += resized[r, c, 1]
+            a[0, r, c, 0] += resized[r, c, 2]
+            a[0, r, c, 0] /= 3
+            a[0, r, c, 0] /= data_max
 
-    print("shapes=", extract.shape, a.shape, a.dtype)
+    # print("shapes=", extract.shape, a.shape, a.dtype)
 
     result = model(a)
     r = np.zeros(8)
@@ -234,8 +250,7 @@ while True:
         r[k] = result[0, k]
     a_test = np.argmax(r)
 
-    print("prédiction=", r, forms[a_test])
-    """
+    print("prédiction=", forms[a_test])
 
     if cv.waitKey(1) == ord('q'):
         break

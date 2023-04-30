@@ -850,17 +850,33 @@ def load_data():
 
     return x_train, y_train, x_test, y_test
 
+def model_chat_gpt():
+    model = keras.models.Sequential()
+    model.add(keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(80, 80, 1)))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(keras.layers.Flatten())
+    model.add(keras.layers.Dense(128, activation='relu'))
+    model.add(keras.layers.Dense(9, activation='softmax'))
+
+    # Compile the model
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam',
+                  metrics=['accuracy'])
+
+    # Print the model summary
 
 def build_model_v1(shape, form_number):
     model = keras.models.Sequential()
 
     model.add(keras.layers.Input((shape[1], shape[2], 1)))
 
-    model.add(keras.layers.Conv2D(48, (3, 3), activation='relu'))
-    # model.add(keras.layers.MaxPooling2D((2, 2)))
+    model.add(keras.layers.Conv2D(32, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D((2, 2)))
     # model.add(keras.layers.Dropout(0.2))
 
-    model.add(keras.layers.Conv2D(48, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(keras.layers.MaxPooling2D((2, 2)))
     # model.add(keras.layers.Dropout(0.2))
 
@@ -872,9 +888,8 @@ def build_model_v1(shape, form_number):
 
     model.summary()
 
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  # loss='mse',
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam',
                   metrics=['accuracy'])
 
     return model
@@ -954,6 +969,12 @@ def do_run(figures, form_number, data_size, rebuild_data, rebuild_model, rebuild
         epochs      = 32
 
         savemodel_callback = keras.callbacks.ModelCheckpoint(filepath=save_dir, verbose=0, save_best_only=True)
+
+        from tensorflow.keras.utils import to_categorical
+
+        # Convert the target data to one-hot encoded format
+        y_train = to_categorical(y_train, num_classes=9)
+        y_test = to_categorical(y_test, num_classes=9)
 
         fit_verbosity = 1
         history = model.fit(x_train, y_train,
@@ -1106,7 +1127,9 @@ def main():
             n2 = n1 + batch - 1
             result = model(x_test[n1:n2-1])
             y_pred = np.argmax(result, axis=-1)
-            pwk.plot_images(x_test[n1:n2-1], y_test[n1:n2-1], range(8 * 8), columns=8, x_size=1, y_size=1, y_pred=y_pred,
+            pwk.plot_images(x_test[n1:n2-1], y_test[n1:n2-1], indices=range(8 * 8), columns=8, x_size=1, y_size=1, y_pred=y_pred,
+                            save_as=LOG + 'Data.jpg')
+            pwk.plot_images(x_test[n1:n2-1], y_pred, indices=range(8 * 8), columns=8, x_size=1, y_size=1, y_pred=y_pred,
                             save_as=LOG + 'Predictions.jpg')
             # errors = [i for i in range(len(x_test)-1) if y_pred[i] != y_test[i]]
             # print("errors", errors)
